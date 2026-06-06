@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Postgres Internals — keystone</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --purple: #bc8cff;
+      --orange: #ffa657;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    .layout { display: flex; min-height: 100vh; }
+
+    /* Sidebar */
+    nav {
+      width: 240px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    nav .logo { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 24px; }
+    nav .logo span { color: var(--accent); font-weight: 600; }
+
+    nav ul { list-style: none; }
+    nav ul li { margin-bottom: 4px; }
+    nav ul li a {
+      display: block;
+      padding: 6px 10px;
+      border-radius: 6px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      transition: all 0.15s;
+    }
+    nav ul li a:hover { background: var(--border); color: var(--text); }
+    nav ul li a.active { background: #1f2937; color: var(--accent); }
+    nav .section-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      padding: 16px 10px 6px;
+    }
+
+    /* Main content */
+    main {
+      flex: 1;
+      max-width: 860px;
+      padding: 48px 40px;
+      margin: 0 auto;
+    }
+
+    .breadcrumb { font-size: 13px; color: var(--muted); margin-bottom: 32px; }
+    .breadcrumb a { color: var(--accent); text-decoration: none; }
+    .breadcrumb a:hover { text-decoration: underline; }
+
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+    .subtitle { color: var(--muted); font-size: 15px; margin-bottom: 40px; }
+
+    h2 {
+      font-size: 1.3rem;
+      font-weight: 600;
+      margin: 48px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    h3 { font-size: 1rem; font-weight: 600; margin: 28px 0 10px; color: var(--accent); }
+
+    p { margin-bottom: 14px; color: var(--text); }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--orange);
+    }
+
+    pre {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      overflow-x: auto;
+      margin: 16px 0;
+    }
+
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .mermaid {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      margin: 20px 0;
+      text-align: center;
+    }
+
+    .callout {
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+      border-left: 3px solid;
+      font-size: 14px;
+    }
+    .callout.info { background: #1c2a3a; border-color: var(--accent); }
+    .callout.warn { background: #2a2010; border-color: var(--yellow); }
+    .callout.danger { background: #2a1010; border-color: var(--red); }
+    .callout.success { background: #102a15; border-color: var(--green); }
+    .callout .label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 6px;
+    }
+    .callout.info .label { color: var(--accent); }
+    .callout.warn .label { color: var(--yellow); }
+    .callout.danger .label { color: var(--red); }
+    .callout.success .label { color: var(--green); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-size: 13px;
+    }
+    th {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+      text-align: left;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    td {
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+      vertical-align: top;
+    }
+    tr:nth-child(even) td { background: #0f141a; }
+
+    .checkpoint {
+      background: var(--surface);
+      border: 1px solid var(--green);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin: 40px 0 0;
+    }
+    .checkpoint h3 { color: var(--green); margin-top: 0; }
+    .checkpoint ul { padding-left: 20px; }
+    .checkpoint li { margin-bottom: 8px; font-size: 14px; }
+
+    .pill {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 12px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .pill.hard { background: #2a1010; color: var(--red); }
+    .pill.med { background: #2a2010; color: var(--yellow); }
+    .pill.easy { background: #102a15; color: var(--green); }
+
+    section { scroll-margin-top: 32px; }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+
+  <nav>
+    <div class="logo">⬡ <span>keystone</span></div>
+    <div class="section-label">Phase 1</div>
+    <ul>
+      <li><a href="postgres-internals.html" class="active">Postgres Internals</a></li>
+      <li><a href="#">Zero-downtime Migrations</a></li>
+    </ul>
+    <div class="section-label">Phase 2</div>
+    <ul>
+      <li><a href="#">Kafka Internals</a></li>
+      <li><a href="#">Delivery Semantics</a></li>
+    </ul>
+    <div class="section-label">Phase 3</div>
+    <ul>
+      <li><a href="#">Redis</a></li>
+      <li><a href="#">Message Queues</a></li>
+    </ul>
+    <div class="section-label">Phase 4</div>
+    <ul>
+      <li><a href="#">Consistency + Consensus</a></li>
+      <li><a href="#">Time + Ordering</a></li>
+      <li><a href="#">Distributed Locks</a></li>
+      <li><a href="#">Partitioning</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <div class="breadcrumb"><a href="../index.html">keystone</a> / Postgres Internals</div>
+
+    <h1>Postgres Internals</h1>
+    <p class="subtitle">MVCC · Vacuum · Locking · Indexes · Query Planner</p>
+
+    <div class="callout info">
+      <div class="label">Why this matters</div>
+      Most production database incidents that look like app bugs are one of: a bloated table, a lock queue, or a bad query plan. MVCC explains all three root causes.
+    </div>
+
+    <!-- ─── BASICS REFRESH ─── -->
+    <section id="basics">
+      <h2>Basics Refresh</h2>
+      <p>Postgres is an ACID-compliant relational database. A quick refresh on what that means at the storage level before going deeper.</p>
+
+      <h3>How data is stored</h3>
+      <p>Tables are stored as <strong>heap files</strong> — a collection of 8KB pages. Each page holds multiple <strong>tuples</strong> (rows). An index is a separate file with a B-tree (or other structure) pointing to heap locations.</p>
+
+      <div class="mermaid">
+graph LR
+  subgraph "Table File (heap)"
+    P1["Page 1<br/>8KB"]
+    P2["Page 2<br/>8KB"]
+    P3["Page 3<br/>8KB"]
+  end
+  subgraph "Index File"
+    I["B-tree<br/>root → leaf → (page, offset)"]
+  end
+  I -->|ctid| P1
+  I -->|ctid| P2
+      </div>
+
+      <h3>ACID in one line each</h3>
+      <table>
+        <tr><th>Property</th><th>What it means in Postgres</th></tr>
+        <tr><td><strong>Atomicity</strong></td><td>All writes in a transaction commit or none do. WAL ensures this survives crashes.</td></tr>
+        <tr><td><strong>Consistency</strong></td><td>Constraints (FK, CHECK, NOT NULL) are enforced at commit time.</td></tr>
+        <tr><td><strong>Isolation</strong></td><td>Concurrent transactions don't see each other's in-progress changes. MVCC handles this.</td></tr>
+        <tr><td><strong>Durability</strong></td><td>Committed data survives crashes. WAL is written to disk before the commit ack.</td></tr>
+      </table>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- ─── MVCC ─── -->
+    <section id="mvcc">
+      <h2>MVCC — Multi-Version Concurrency Control</h2>
+      <p>The mechanism that lets readers and writers not block each other. Instead of locking rows, Postgres keeps multiple versions of the same row and shows each transaction the version it's allowed to see.</p>
+
+      <h3>xmin and xmax</h3>
+      <p>Every tuple has two hidden system columns:</p>
+      <table>
+        <tr><th>Column</th><th>Meaning</th></tr>
+        <tr><td><code>xmin</code></td><td>Transaction ID that created (inserted) this tuple</td></tr>
+        <tr><td><code>xmax</code></td><td>Transaction ID that deleted this tuple. 0 = still alive.</td></tr>
+      </table>
+
+      <p>A transaction can see a tuple if: <code>xmin &lt;= my_txn_id</code> AND (<code>xmax = 0</code> OR <code>xmax &gt; my_txn_id</code>).</p>
+
+      <h3>UPDATE is INSERT + DELETE</h3>
+      <p>Postgres never modifies a tuple in place. An UPDATE writes a <em>new</em> tuple version and marks the old one deleted by setting its <code>xmax</code>.</p>
+
+      <div class="mermaid">
+sequenceDiagram
+  participant T1 as Transaction 100
+  participant Heap as Heap Page
+  T1->>Heap: INSERT row A → tuple (xmin=100, xmax=0)
+  Note over Heap: row A visible, alive
+  T1->>Heap: UPDATE row A → new tuple (xmin=100, xmax=0)<br/>old tuple: xmax=100
+  Note over Heap: old version dead for txn ≥ 100<br/>new version alive
+      </div>
+
+      <h3>Snapshot isolation</h3>
+      <p>When a transaction starts, Postgres takes a <strong>snapshot</strong> — a point-in-time list of which transactions are active. The transaction only sees committed data from before its snapshot. Reads are always consistent, never blocked by writers.</p>
+
+      <div class="callout info">
+        <div class="label">Key insight</div>
+        This is why Postgres readers never block writers and writers never block readers. The cost is dead tuples accumulating on disk — that's what vacuum cleans up.
+      </div>
+
+      <h3>HOT updates</h3>
+      <p>Heap Only Tuple update. If the updated column is <em>not</em> indexed and the new tuple fits on the <em>same page</em>, Postgres can skip updating the index entirely. The index still points to the old tuple, which chains to the new one. Significant write amplification saving.</p>
+
+      <div class="mermaid">
+graph TD
+  subgraph "Without HOT"
+    I1["Index entry"] -->|"ctid"| OT["Old tuple<br/>(xmax=100)"]
+    I2["New index entry"] -->|"ctid"| NT["New tuple<br/>(xmin=100)"]
+  end
+  subgraph "With HOT (same page, non-indexed col)"
+    I3["Index entry"] -->|"ctid"| OT2["Old tuple<br/>(xmax=100, HOT chain)"]
+    OT2 -->|"t_ctid"| NT2["New tuple<br/>(xmin=100)"]
+  end
+      </div>
+
+      <pre><code>-- See xmin/xmax on any table
+SELECT xmin, xmax, * FROM your_table LIMIT 5;</code></pre>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- ─── VACUUM ─── -->
+    <section id="vacuum">
+      <h2>Vacuum</h2>
+      <p>MVCC leaves dead tuples behind. Vacuum reclaims that space. Without it, tables grow forever and performance degrades.</p>
+
+      <h3>What accumulates</h3>
+
+      <div class="mermaid">
+graph TD
+  A["INSERT 1M rows"] --> B["UPDATE all 1M rows"]
+  B --> C["2M tuples on disk<br/>1M live, 1M dead"]
+  C --> D["Table size = 2x data"]
+  D --> E["Vacuum runs"]
+  E --> F["Dead tuples marked reusable<br/>Space freed for new inserts"]
+  F --> G["VACUUM FULL rewrites<br/>entire table — takes lock"]
+      </div>
+
+      <h3>Autovacuum</h3>
+      <p>Postgres runs autovacuum workers in the background. It triggers when dead tuples exceed a threshold (<code>autovacuum_vacuum_scale_factor</code>, default 20% of table). For high-churn tables, tune this aggressively:</p>
+
+      <pre><code>-- Tune per-table for high-churn tables
+ALTER TABLE transfers SET (
+  autovacuum_vacuum_scale_factor = 0.01,  -- trigger at 1% dead tuples
+  autovacuum_analyze_scale_factor = 0.01
+);</code></pre>
+
+      <h3>The long-transaction trap <span class="pill hard">HIGH RISK</span></h3>
+      <p>Vacuum cannot remove a dead tuple if any active transaction might still need to see it. A single long-running transaction (idle in transaction, forgotten query) will block vacuum from reclaiming any space created after that transaction started.</p>
+
+      <div class="callout danger">
+        <div class="label">Incident pattern</div>
+        Table grows unboundedly. Autovacuum runs but reports 0 tuples removed. Find the culprit with <code>pg_stat_activity</code> — it's almost always an idle transaction from a connection pool or a forgotten analytics query.
+      </div>
+
+      <pre><code>-- Find blocking long transactions
+SELECT pid, now() - pg_stat_activity.query_start AS duration,
+       query, state
+FROM pg_stat_activity
+WHERE state != 'idle'
+  AND query_start < now() - interval '5 minutes'
+ORDER BY duration DESC;
+
+-- Find oldest transaction preventing vacuum
+SELECT min(backend_xmin) FROM pg_stat_activity;</code></pre>
+
+      <h3>txid wraparound <span class="pill hard">CRITICAL</span></h3>
+      <p>Transaction IDs are 32-bit integers — Postgres runs out after ~2.1 billion transactions. When this happens, Postgres will <strong>refuse all writes</strong> to protect data integrity.</p>
+
+      <div class="mermaid">
+graph LR
+  A["txid 1"] --> B["txid 1,000,000"] --> C["txid 2,100,000,000"]
+  C --> D["⚠️ WRAPAROUND<br/>Postgres stops accepting writes"]
+  style D fill:#2a1010,stroke:#f85149,color:#f85149
+      </div>
+
+      <p>Postgres prevents this by <strong>freezing</strong> old tuples — marking them as visible to all future transactions. Monitor with:</p>
+      <pre><code>-- Tables closest to wraparound (act if age > 1.5B)
+SELECT relname, age(relfrozenxid) AS xid_age
+FROM pg_class
+WHERE relkind = 'r'
+ORDER BY age(relfrozenxid) DESC
+LIMIT 10;</code></pre>
+
+      <h3>VACUUM vs VACUUM FULL</h3>
+      <table>
+        <tr><th></th><th>VACUUM</th><th>VACUUM FULL</th></tr>
+        <tr><td>Lock</td><td>None (concurrent)</td><td>ACCESS EXCLUSIVE — blocks all reads + writes</td></tr>
+        <tr><td>Space freed</td><td>Marks pages reusable, does not shrink file</td><td>Rewrites table, shrinks file on disk</td></tr>
+        <tr><td>Use when</td><td>Routine maintenance</td><td>Table is heavily bloated, downtime acceptable</td></tr>
+      </table>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- ─── LOCKING ─── -->
+    <section id="locking">
+      <h2>Locking</h2>
+
+      <h3>Lock levels</h3>
+      <p>Postgres has 8 lock modes, from weakest to strongest. Higher modes conflict with more others.</p>
+
+      <table>
+        <tr><th>Lock mode</th><th>Taken by</th><th>Blocks</th></tr>
+        <tr><td><code>ACCESS SHARE</code></td><td>SELECT</td><td>Only ACCESS EXCLUSIVE</td></tr>
+        <tr><td><code>ROW SHARE</code></td><td>SELECT FOR UPDATE</td><td>EXCLUSIVE, ACCESS EXCLUSIVE</td></tr>
+        <tr><td><code>ROW EXCLUSIVE</code></td><td>INSERT, UPDATE, DELETE</td><td>SHARE and above</td></tr>
+        <tr><td><code>SHARE UPDATE EXCLUSIVE</code></td><td>VACUUM, CREATE INDEX CONCURRENTLY</td><td>SHARE UPDATE EXCLUSIVE and above</td></tr>
+        <tr><td><code>SHARE</code></td><td>CREATE INDEX (non-concurrent)</td><td>ROW EXCLUSIVE and above</td></tr>
+        <tr><td><code>ACCESS EXCLUSIVE</code></td><td>ALTER TABLE, DROP TABLE, VACUUM FULL</td><td>Everything — no reads allowed</td></tr>
+      </table>
+
+      <h3>The ALTER TABLE lock queue problem <span class="pill hard">HIGH RISK</span></h3>
+      <p>ALTER TABLE takes <code>ACCESS EXCLUSIVE</code>. If a long SELECT is running, ALTER TABLE queues behind it. Every subsequent SELECT then queues behind the ALTER TABLE — effectively taking the table offline.</p>
+
+      <div class="mermaid">
+sequenceDiagram
+  participant S1 as SELECT (running, 5min)
+  participant A as ALTER TABLE
+  participant S2 as SELECT (new)
+  participant S3 as SELECT (new)
+
+  S1->>DB: Running (holds ACCESS SHARE)
+  A->>DB: Waiting for ACCESS EXCLUSIVE
+  Note over A,DB: ALTER queued — blocks here
+  S2->>DB: Waiting (blocked behind ALTER)
+  S3->>DB: Waiting (blocked behind ALTER)
+  Note over S2,S3: Table effectively offline
+      </div>
+
+      <div class="callout warn">
+        <div class="label">Safe pattern</div>
+        Always set <code>lock_timeout</code> before a migration. If the lock can't be acquired quickly, abort and retry during low traffic — don't let it queue.
+        <br/><br/>
+        <code>SET lock_timeout = '2s'; ALTER TABLE ...</code>
+      </div>
+
+      <h3>FOR UPDATE vs SKIP LOCKED</h3>
+
+      <table>
+        <tr><th></th><th>FOR UPDATE</th><th>SKIP LOCKED</th></tr>
+        <tr><td>Behaviour</td><td>Locks selected rows, blocks other transactions trying to lock same rows</td><td>Skips rows already locked by other transactions</td></tr>
+        <tr><td>Use case</td><td>Pessimistic locking (prevent concurrent modification)</td><td>Work queue — multiple workers pull jobs without blocking each other</td></tr>
+      </table>
+
+      <pre><code>-- Work queue pattern: each worker atomically claims a job
+UPDATE jobs
+SET status = 'processing', worker_id = $1
+WHERE id = (
+  SELECT id FROM jobs
+  WHERE status = 'pending'
+  ORDER BY created_at
+  LIMIT 1
+  FOR UPDATE SKIP LOCKED
+)
+RETURNING *;</code></pre>
+
+      <h3>Advisory locks</h3>
+      <p>Application-level cooperative locks — Postgres stores them but your app decides what they mean. Useful for preventing concurrent runs of a job, or implementing distributed mutex patterns.</p>
+
+      <pre><code>-- Acquire advisory lock (returns false if already held)
+SELECT pg_try_advisory_lock(12345);
+
+-- Release
+SELECT pg_advisory_unlock(12345);</code></pre>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- ─── INDEXES ─── -->
+    <section id="indexes">
+      <h2>Indexes</h2>
+
+      <h3>B-tree (default)</h3>
+      <p>Balanced tree. O(log n) lookup. Supports =, &lt;, &gt;, BETWEEN, ORDER BY, LIKE 'prefix%'. The right answer for almost everything.</p>
+
+      <div class="mermaid">
+graph TD
+  Root["Root node<br/>50 | 100"] --> L["Leaf: 1–49"]
+  Root --> M["Leaf: 50–99"]
+  Root --> R["Leaf: 100+"]
+  L --> H1["Heap (page, offset)"]
+  M --> H2["Heap (page, offset)"]
+  R --> H3["Heap (page, offset)"]
+      </div>
+
+      <h3>Index types at a glance</h3>
+      <table>
+        <tr><th>Type</th><th>Best for</th><th>Notes</th></tr>
+        <tr><td><strong>B-tree</strong></td><td>Most things — equality, range, sort</td><td>Default. Use unless you have a specific reason not to.</td></tr>
+        <tr><td><strong>GIN</strong></td><td>Arrays, JSONB, full-text search</td><td>Slow to build, fast to query. High write amplification.</td></tr>
+        <tr><td><strong>BRIN</strong></td><td>Naturally ordered large tables (timestamps, sequences)</td><td>Tiny size, coarse — stores min/max per block range.</td></tr>
+        <tr><td><strong>Hash</strong></td><td>Equality only</td><td>Rarely better than B-tree in practice.</td></tr>
+        <tr><td><strong>GiST</strong></td><td>Geometric data, PostGIS</td><td>Extensible index framework.</td></tr>
+      </table>
+
+      <h3>Partial indexes <span class="pill easy">HIGH VALUE</span></h3>
+      <p>Index only rows matching a WHERE clause. Smaller, faster, cheaper to maintain.</p>
+      <pre><code>-- Only index pending jobs (not the 99% that are completed)
+CREATE INDEX idx_jobs_pending ON jobs (created_at)
+WHERE status = 'pending';</code></pre>
+
+      <h3>Covering indexes (INCLUDE)</h3>
+      <p>Store extra columns in the index leaf — avoid the heap fetch entirely for queries that only need those columns.</p>
+      <pre><code>-- Query only needs id + status — never touches heap
+CREATE INDEX idx_transfers_covering
+ON transfers (account_id)
+INCLUDE (id, status, amount);</code></pre>
+
+      <h3>When the planner ignores your index</h3>
+      <ul style="padding-left: 20px; margin-bottom: 14px; color: var(--text);">
+        <li style="margin-bottom: 8px;"><strong>Low selectivity</strong> — returning &gt;5-10% of table rows, sequential scan is cheaper</li>
+        <li style="margin-bottom: 8px;"><strong>Stale statistics</strong> — run <code>ANALYZE</code></li>
+        <li style="margin-bottom: 8px;"><strong>Type mismatch</strong> — <code>WHERE id = '123'</code> when id is integer</li>
+        <li style="margin-bottom: 8px;"><strong>Function on column</strong> — <code>WHERE lower(email) = 'x'</code> skips index on <code>email</code>; create a functional index instead</li>
+        <li style="margin-bottom: 8px;"><strong>LIKE with leading wildcard</strong> — <code>LIKE '%foo'</code> can't use B-tree</li>
+      </ul>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- ─── PLANNER ─── -->
+    <section id="planner">
+      <h2>Query Planner</h2>
+      <p>The planner chooses how to execute a query. It estimates the cost of each possible plan and picks the cheapest. Bad estimates = bad plans.</p>
+
+      <h3>EXPLAIN basics</h3>
+      <pre><code>-- Show plan without running
+EXPLAIN SELECT * FROM transfers WHERE account_id = 42;
+
+-- Run it and show actual vs estimated
+EXPLAIN ANALYZE SELECT * FROM transfers WHERE account_id = 42;
+
+-- Full detail: actual rows, buffers, timing
+EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+SELECT * FROM transfers WHERE account_id = 42;</code></pre>
+
+      <h3>Reading EXPLAIN output</h3>
+      <div class="mermaid">
+graph TD
+  A["Nested Loop<br/>cost=0.00..8.30 rows=1 width=120<br/>actual time=0.1..0.2 rows=5 loops=1"]
+  A --> B["Index Scan on transfers<br/>Index Cond: account_id = 42<br/>actual rows=5"]
+  A --> C["Seq Scan on accounts<br/>Filter: id = 42<br/>Rows removed by filter: 9995"]
+  style C fill:#2a1010,stroke:#f85149
+      </div>
+
+      <table>
+        <tr><th>Field</th><th>Meaning</th></tr>
+        <tr><td><code>cost=X..Y</code></td><td>Estimated cost units. X = startup cost, Y = total cost.</td></tr>
+        <tr><td><code>rows=N</code></td><td>Planner's estimated row count. Compare to <code>actual rows</code>.</td></tr>
+        <tr><td><code>actual time</code></td><td>Real milliseconds. Only with ANALYZE.</td></tr>
+        <tr><td><code>Buffers: hit=X read=Y</code></td><td>X = from cache, Y = from disk. High reads = cold cache or missing index.</td></tr>
+        <tr><td><code>Rows removed by filter</code></td><td>Rows scanned but discarded. High = missing index or wrong plan.</td></tr>
+      </table>
+
+      <h3>Row estimate mismatch — the root cause of bad plans</h3>
+      <p>If <code>rows=1</code> but <code>actual rows=50000</code>, the planner chose the wrong strategy. Fix: run <code>ANALYZE tablename</code> to refresh statistics, or increase <code>default_statistics_target</code> for skewed columns.</p>
+
+      <pre><code>-- Refresh statistics
+ANALYZE transfers;
+
+-- Increase stats target for skewed column
+ALTER TABLE transfers ALTER COLUMN status
+SET STATISTICS 500;
+ANALYZE transfers;
+
+-- Inspect what Postgres knows about a column
+SELECT * FROM pg_stats
+WHERE tablename = 'transfers' AND attname = 'status';</code></pre>
+
+      <h3>Scan types</h3>
+      <table>
+        <tr><th>Scan type</th><th>When used</th><th>Performance</th></tr>
+        <tr><td>Sequential Scan</td><td>No index, or returning large % of rows</td><td>Fast for bulk reads, slow for lookups</td></tr>
+        <tr><td>Index Scan</td><td>Selective query, index exists</td><td>Fast for selective queries, random I/O</td></tr>
+        <tr><td>Index Only Scan</td><td>All needed columns in covering index</td><td>Fastest — no heap access</td></tr>
+        <tr><td>Bitmap Heap Scan</td><td>Multiple conditions, moderate selectivity</td><td>Batches heap reads for efficiency</td></tr>
+      </table>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- ─── WAL ─── -->
+    <section id="wal">
+      <h2>WAL — Write-Ahead Log</h2>
+      <p>Every change is written to the WAL before the data page is modified. This gives Postgres crash recovery (replay WAL to recover) and is the foundation for replication and CDC.</p>
+
+      <div class="mermaid">
+sequenceDiagram
+  participant App
+  participant WAL
+  participant Heap
+  participant Replica
+
+  App->>WAL: Write change record (LSN assigned)
+  WAL->>App: fsync ack (commit confirmed)
+  WAL-->>Heap: Data page updated (async)
+  WAL-->>Replica: WAL stream (replication)
+      </div>
+
+      <p>LSN = Log Sequence Number. A monotonically increasing position in the WAL stream. CDC systems (Debezium) use LSN as the ordering and dedup key — never the event timestamp.</p>
+
+      <pre><code>-- Current WAL position
+SELECT pg_current_wal_lsn();
+
+-- Replication lag (on primary)
+SELECT client_addr, state, sent_lsn, write_lsn, flush_lsn, replay_lsn
+FROM pg_stat_replication;</code></pre>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- ─── CHECKPOINT ─── -->
+    <div class="checkpoint">
+      <h3>You know it when...</h3>
+      <ul>
+        <li>You can explain <strong>txid wraparound</strong> to a junior engineer in 5 minutes</li>
+        <li>You can predict <em>before running it</em> whether a given <code>ALTER TABLE</code> will block production</li>
+        <li>Given "table is 4x its data size", you know the root cause and the fix</li>
+        <li>You can read <code>EXPLAIN (ANALYZE, BUFFERS)</code> output and identify the bottleneck</li>
+        <li>You know why <code>SKIP LOCKED</code> beats <code>FOR UPDATE</code> for work queues</li>
+        <li>You can explain why <code>UPDATE</code> = <code>INSERT</code> + <code>DELETE</code> in Postgres</li>
+      </ul>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      background: '#161b22',
+      primaryColor: '#1f2937',
+      primaryTextColor: '#e6edf3',
+      primaryBorderColor: '#30363d',
+      lineColor: '#58a6ff',
+      secondaryColor: '#161b22',
+      tertiaryColor: '#0d1117'
+    }
+  });
+</script>
+
+</body>
+</html>
