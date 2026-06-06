@@ -5,17 +5,235 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>keystone</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 80px auto; padding: 0 24px; color: #111; }
-    h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 8px; }
-    p { color: #555; line-height: 1.6; }
-    ul { padding-left: 20px; color: #555; line-height: 2; }
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --purple: #bc8cff;
+      --orange: #ffa657;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    /* Nav */
+    .site-nav {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 40px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .nav-logo {
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .nav-sep { color: var(--border); }
+    .nav-desc { color: var(--muted); font-size: 13px; flex: 1; }
+    .nav-home { display: none; }
+
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 56px 40px;
+    }
+
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+    .subtitle { color: var(--muted); margin-bottom: 48px; }
+
+    .section { margin-bottom: 48px; }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .topic-list { list-style: none; }
+
+    .topic-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .topic-item:last-child { border-bottom: none; }
+
+    .topic-status {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-top: 8px;
+      flex-shrink: 0;
+    }
+    .status-done { background: var(--green); }
+    .status-wip { background: var(--yellow); }
+    .status-pending { background: var(--border); }
+
+    .topic-content { flex: 1; }
+
+    .topic-title {
+      font-weight: 600;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+    .topic-title a {
+      color: var(--text);
+      text-decoration: none;
+    }
+    .topic-title a:hover { color: var(--accent); }
+    .topic-title.pending { color: var(--muted); }
+
+    .topic-sub {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 12px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .badge-done { background: #102a15; color: var(--green); }
+    .badge-wip { background: #2a2010; color: var(--yellow); }
+    .badge-soon { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+
+    /* Sub-pages */
+    .sub-list { list-style: none; margin: 8px 0 4px 24px; }
+    .sub-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 5px 0;
+      font-size: 13px;
+    }
+    .sub-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .sub-dot.done { background: var(--green); }
+    .sub-dot.pending { background: var(--border); }
+    .sub-item a { color: var(--accent); text-decoration: none; }
+    .sub-item a:hover { text-decoration: underline; }
+    .sub-item .coming { color: var(--muted); }
   </style>
 </head>
 <body>
+
+<div id="site-nav"></div>
+<script src="components/nav.js"></script>
+
+<main>
   <h1>keystone</h1>
-  <p>Distributed systems and fintech engineering — built and broken deliberately.</p>
-  <ul>
-    <li>Concepts coming soon</li>
-  </ul>
+  <p class="subtitle">Distributed systems and fintech engineering — built and broken deliberately.</p>
+
+  <div class="section">
+    <div class="section-title">Topics</div>
+    <ul class="topic-list">
+
+      <!-- Postgres -->
+      <li class="topic-item">
+        <div class="topic-status status-wip"></div>
+        <div class="topic-content">
+          <div class="topic-title">Postgres <span class="badge badge-wip">in progress</span></div>
+          <ul class="sub-list">
+            <li class="sub-item"><div class="sub-dot done"></div><a href="postgres/overview.html">Overview — MVCC, Vacuum, Locking, Indexes, WAL</a></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">MVCC — deep dive</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Indexes — deep dive</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">WAL for CDC</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Vacuum + Locking</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Zero-downtime migrations</span></li>
+          </ul>
+        </div>
+      </li>
+
+      <!-- Kafka -->
+      <li class="topic-item">
+        <div class="topic-status status-pending"></div>
+        <div class="topic-content">
+          <div class="topic-title pending">Kafka <span class="badge badge-soon">coming</span></div>
+          <ul class="sub-list">
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Basics — topics, partitions, consumer groups</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Replication + ISR</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Exactly-once semantics</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Consumer rebalancing</span></li>
+          </ul>
+        </div>
+      </li>
+
+      <!-- Redis -->
+      <li class="topic-item">
+        <div class="topic-status status-pending"></div>
+        <div class="topic-content">
+          <div class="topic-title pending">Redis <span class="badge badge-soon">coming</span></div>
+          <ul class="sub-list">
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Data structures + use cases</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Persistence — RDB vs AOF</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Eviction + memory pressure</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Cluster + Sentinel</span></li>
+          </ul>
+        </div>
+      </li>
+
+      <!-- Delivery Semantics -->
+      <li class="topic-item">
+        <div class="topic-status status-pending"></div>
+        <div class="topic-content">
+          <div class="topic-title pending">Delivery Semantics <span class="badge badge-soon">coming</span></div>
+          <ul class="sub-list">
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">At-least-once vs exactly-once</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Idempotency keys + dedup</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Outbox pattern</span></li>
+          </ul>
+        </div>
+      </li>
+
+      <!-- Consistency -->
+      <li class="topic-item">
+        <div class="topic-status status-pending"></div>
+        <div class="topic-content">
+          <div class="topic-title pending">Consistency + Consensus <span class="badge badge-soon">coming</span></div>
+          <ul class="sub-list">
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Consistency model ladder</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Raft — leader election + log replication</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Quorums</span></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Time + ordering — Lamport, vector clocks</span></li>
+          </ul>
+        </div>
+      </li>
+
+    </ul>
+  </div>
+
+</main>
+
 </body>
 </html>

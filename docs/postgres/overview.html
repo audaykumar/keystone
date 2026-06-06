@@ -30,56 +30,27 @@
       line-height: 1.7;
     }
 
-    .layout { display: flex; min-height: 100vh; }
-
-    /* Sidebar */
-    nav {
-      width: 240px;
-      flex-shrink: 0;
+    /* Nav */
+    .site-nav {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 40px;
+      border-bottom: 1px solid var(--border);
       background: var(--surface);
-      border-right: 1px solid var(--border);
-      padding: 24px 16px;
-      position: sticky;
-      top: 0;
-      height: 100vh;
-      overflow-y: auto;
     }
-
-    nav .logo { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 24px; }
-    nav .logo span { color: var(--accent); font-weight: 600; }
-
-    nav ul { list-style: none; }
-    nav ul li { margin-bottom: 4px; }
-    nav ul li a {
-      display: block;
-      padding: 6px 10px;
-      border-radius: 6px;
-      color: var(--muted);
-      text-decoration: none;
-      font-size: 13px;
-      transition: all 0.15s;
-    }
-    nav ul li a:hover { background: var(--border); color: var(--text); }
-    nav ul li a.active { background: #1f2937; color: var(--accent); }
-    nav .section-label {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-      padding: 16px 10px 6px;
-    }
+    .nav-logo { font-weight: 700; font-size: 15px; color: var(--accent); text-decoration: none; }
+    .nav-sep { color: var(--border); }
+    .nav-desc { color: var(--muted); font-size: 13px; flex: 1; }
+    .nav-home { font-size: 13px; color: var(--muted); text-decoration: none; }
+    .nav-home:hover { color: var(--accent); }
 
     /* Main content */
     main {
-      flex: 1;
       max-width: 860px;
       padding: 48px 40px;
       margin: 0 auto;
     }
-
-    .breadcrumb { font-size: 13px; color: var(--muted); margin-bottom: 32px; }
-    .breadcrumb a { color: var(--accent); text-decoration: none; }
-    .breadcrumb a:hover { text-decoration: underline; }
 
     h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
     .subtitle { color: var(--muted); font-size: 15px; margin-bottom: 40px; }
@@ -214,37 +185,10 @@
 </head>
 <body>
 
-<div class="layout">
+<div id="site-nav"></div>
+<script src="../components/nav.js"></script>
 
-  <nav>
-    <div class="logo">⬡ <span>keystone</span></div>
-    <div class="section-label">Phase 1</div>
-    <ul>
-      <li><a href="postgres-internals.html" class="active">Postgres Internals</a></li>
-      <li><a href="#">Zero-downtime Migrations</a></li>
-    </ul>
-    <div class="section-label">Phase 2</div>
-    <ul>
-      <li><a href="#">Kafka Internals</a></li>
-      <li><a href="#">Delivery Semantics</a></li>
-    </ul>
-    <div class="section-label">Phase 3</div>
-    <ul>
-      <li><a href="#">Redis</a></li>
-      <li><a href="#">Message Queues</a></li>
-    </ul>
-    <div class="section-label">Phase 4</div>
-    <ul>
-      <li><a href="#">Consistency + Consensus</a></li>
-      <li><a href="#">Time + Ordering</a></li>
-      <li><a href="#">Distributed Locks</a></li>
-      <li><a href="#">Partitioning</a></li>
-    </ul>
-  </nav>
-
-  <main>
-    <div class="breadcrumb"><a href="../index.html">keystone</a> / Postgres Internals</div>
-
+<main>
     <h1>Postgres Internals</h1>
     <p class="subtitle">MVCC · Vacuum · Locking · Indexes · Query Planner</p>
 
@@ -278,10 +222,10 @@ graph LR
       <h3>ACID in one line each</h3>
       <table>
         <tr><th>Property</th><th>What it means in Postgres</th></tr>
-        <tr><td><strong>Atomicity</strong></td><td>All writes in a transaction commit or none do. WAL ensures this survives crashes.</td></tr>
-        <tr><td><strong>Consistency</strong></td><td>Constraints (FK, CHECK, NOT NULL) are enforced at commit time.</td></tr>
-        <tr><td><strong>Isolation</strong></td><td>Concurrent transactions don't see each other's in-progress changes. MVCC handles this.</td></tr>
-        <tr><td><strong>Durability</strong></td><td>Committed data survives crashes. WAL is written to disk before the commit ack.</td></tr>
+        <tr><td><strong>Atomicity</strong></td><td>A transaction commits as one unit or rolls back as one unit.</td></tr>
+        <tr><td><strong>Consistency</strong></td><td>Transactions preserve declared invariants such as constraints. Most constraints are checked per statement; deferred constraints can be checked at commit.</td></tr>
+        <tr><td><strong>Isolation</strong></td><td>Concurrent transactions are given controlled views of each other's work. MVCC and locking enforce the selected isolation level.</td></tr>
+        <tr><td><strong>Durability</strong></td><td>With normal synchronous commit settings, committed changes survive a crash because their WAL records are flushed before success is returned.</td></tr>
       </table>
     </section>
 
@@ -290,17 +234,17 @@ graph LR
     <!-- ─── MVCC ─── -->
     <section id="mvcc">
       <h2>MVCC — Multi-Version Concurrency Control</h2>
-      <p>The mechanism that lets readers and writers not block each other. Instead of locking rows, Postgres keeps multiple versions of the same row and shows each transaction the version it's allowed to see.</p>
+      <p>The mechanism that lets ordinary reads and row writes proceed concurrently. Postgres keeps multiple versions of a row and uses a transaction snapshot to decide which version is visible.</p>
 
       <h3>xmin and xmax</h3>
       <p>Every tuple has two hidden system columns:</p>
       <table>
         <tr><th>Column</th><th>Meaning</th></tr>
         <tr><td><code>xmin</code></td><td>Transaction ID that created (inserted) this tuple</td></tr>
-        <tr><td><code>xmax</code></td><td>Transaction ID that deleted this tuple. 0 = still alive.</td></tr>
+        <tr><td><code>xmax</code></td><td>Usually the transaction ID that deleted or superseded this tuple. It can also contain row-locking information.</td></tr>
       </table>
 
-      <p>A transaction can see a tuple if: <code>xmin &lt;= my_txn_id</code> AND (<code>xmax = 0</code> OR <code>xmax &gt; my_txn_id</code>).</p>
+      <p>Visibility is not a simple transaction-ID comparison. Postgres checks whether the creating and deleting transactions committed, whether they were active in the reader's snapshot, and whether the current transaction created the version.</p>
 
       <h3>UPDATE is INSERT + DELETE</h3>
       <p>Postgres never modifies a tuple in place. An UPDATE writes a <em>new</em> tuple version and marks the old one deleted by setting its <code>xmax</code>.</p>
@@ -312,15 +256,15 @@ sequenceDiagram
   T1->>Heap: INSERT row A → tuple (xmin=100, xmax=0)
   Note over Heap: row A visible, alive
   T1->>Heap: UPDATE row A → new tuple (xmin=100, xmax=0)<br/>old tuple: xmax=100
-  Note over Heap: old version dead for txn ≥ 100<br/>new version alive
+  Note over Heap: snapshot rules decide which version each reader sees
       </div>
 
-      <h3>Snapshot isolation</h3>
-      <p>When a transaction starts, Postgres takes a <strong>snapshot</strong> — a point-in-time list of which transactions are active. The transaction only sees committed data from before its snapshot. Reads are always consistent, never blocked by writers.</p>
+      <h3>Snapshots and isolation levels</h3>
+      <p>A snapshot records which transactions are visible to a statement. At the default <code>READ COMMITTED</code> level, each statement gets a new snapshot. <code>REPEATABLE READ</code> and <code>SERIALIZABLE</code> keep one snapshot across the transaction, beginning with its first relevant statement.</p>
 
       <div class="callout info">
         <div class="label">Key insight</div>
-        This is why Postgres readers never block writers and writers never block readers. The cost is dead tuples accumulating on disk — that's what vacuum cleans up.
+        Ordinary reads do not block ordinary row writes, and row writes do not block ordinary reads. DDL and explicit locks can still block them. Keeping row versions for MVCC creates dead tuples that vacuum must reclaim.
       </div>
 
       <h3>HOT updates</h3>
@@ -362,7 +306,7 @@ graph TD
       </div>
 
       <h3>Autovacuum</h3>
-      <p>Postgres runs autovacuum workers in the background. It triggers when dead tuples exceed a threshold (<code>autovacuum_vacuum_scale_factor</code>, default 20% of table). For high-churn tables, tune this aggressively:</p>
+      <p>Postgres runs autovacuum workers in the background. For updates and deletes, the trigger combines a fixed threshold with a fraction of the table size. The default scale factor is 20%. High-churn tables often need lower per-table settings:</p>
 
       <pre><code>-- Tune per-table for high-churn tables
 ALTER TABLE transfers SET (
@@ -371,31 +315,35 @@ ALTER TABLE transfers SET (
 );</code></pre>
 
       <h3>The long-transaction trap <span class="pill hard">HIGH RISK</span></h3>
-      <p>Vacuum cannot remove a dead tuple if any active transaction might still need to see it. A single long-running transaction (idle in transaction, forgotten query) will block vacuum from reclaiming any space created after that transaction started.</p>
+      <p>Vacuum cannot remove a dead tuple while an old snapshot might still need it. A long-running transaction can therefore hold back cleanup of newer dead tuples.</p>
 
       <div class="callout danger">
         <div class="label">Incident pattern</div>
-        Table grows unboundedly. Autovacuum runs but reports 0 tuples removed. Find the culprit with <code>pg_stat_activity</code> — it's almost always an idle transaction from a connection pool or a forgotten analytics query.
+        A table keeps growing even though autovacuum runs. Check transaction age and snapshots in <code>pg_stat_activity</code>; common causes include sessions left idle in a transaction and long analytics transactions.
       </div>
 
       <pre><code>-- Find blocking long transactions
-SELECT pid, now() - pg_stat_activity.query_start AS duration,
-       query, state
+SELECT pid, now() - xact_start AS transaction_age,
+       state, query
 FROM pg_stat_activity
-WHERE state != 'idle'
-  AND query_start < now() - interval '5 minutes'
-ORDER BY duration DESC;
+WHERE xact_start IS NOT NULL
+  AND xact_start &lt; now() - interval '5 minutes'
+ORDER BY xact_start;
 
--- Find oldest transaction preventing vacuum
-SELECT min(backend_xmin) FROM pg_stat_activity;</code></pre>
+-- Find sessions holding the oldest snapshots
+SELECT pid, backend_xmin, state, query
+FROM pg_stat_activity
+WHERE backend_xmin IS NOT NULL
+ORDER BY age(backend_xmin) DESC;</code></pre>
 
       <h3>txid wraparound <span class="pill hard">CRITICAL</span></h3>
-      <p>Transaction IDs are 32-bit integers — Postgres runs out after ~2.1 billion transactions. When this happens, Postgres will <strong>refuse all writes</strong> to protect data integrity.</p>
+      <p>Transaction IDs are 32-bit values interpreted within a roughly two-billion-transaction visibility window. If old row versions are not frozen before they fall outside that window, they could appear to belong to the future. Near that limit, Postgres refuses commands that need new transaction IDs.</p>
 
       <div class="mermaid">
 graph LR
-  A["txid 1"] --> B["txid 1,000,000"] --> C["txid 2,100,000,000"]
-  C --> D["⚠️ WRAPAROUND<br/>Postgres stops accepting writes"]
+  A["Old tuple created"] --> B["XID counter advances"]
+  B --> C["Autovacuum freezes old tuple"]
+  B --> D["No freeze near safety limit<br/>new XIDs refused"]
   style D fill:#2a1010,stroke:#f85149,color:#f85149
       </div>
 
@@ -410,7 +358,7 @@ LIMIT 10;</code></pre>
       <h3>VACUUM vs VACUUM FULL</h3>
       <table>
         <tr><th></th><th>VACUUM</th><th>VACUUM FULL</th></tr>
-        <tr><td>Lock</td><td>None (concurrent)</td><td>ACCESS EXCLUSIVE — blocks all reads + writes</td></tr>
+        <tr><td>Lock</td><td>SHARE UPDATE EXCLUSIVE — normal reads and writes continue</td><td>ACCESS EXCLUSIVE — blocks all reads + writes</td></tr>
         <tr><td>Space freed</td><td>Marks pages reusable, does not shrink file</td><td>Rewrites table, shrinks file on disk</td></tr>
         <tr><td>Use when</td><td>Routine maintenance</td><td>Table is heavily bloated, downtime acceptable</td></tr>
       </table>
@@ -423,20 +371,20 @@ LIMIT 10;</code></pre>
       <h2>Locking</h2>
 
       <h3>Lock levels</h3>
-      <p>Postgres has 8 lock modes, from weakest to strongest. Higher modes conflict with more others.</p>
+      <p>Postgres has eight table-level lock modes. The common modes below show how routine reads, writes, maintenance, and DDL interact.</p>
 
       <table>
         <tr><th>Lock mode</th><th>Taken by</th><th>Blocks</th></tr>
         <tr><td><code>ACCESS SHARE</code></td><td>SELECT</td><td>Only ACCESS EXCLUSIVE</td></tr>
         <tr><td><code>ROW SHARE</code></td><td>SELECT FOR UPDATE</td><td>EXCLUSIVE, ACCESS EXCLUSIVE</td></tr>
-        <tr><td><code>ROW EXCLUSIVE</code></td><td>INSERT, UPDATE, DELETE</td><td>SHARE and above</td></tr>
+        <tr><td><code>ROW EXCLUSIVE</code></td><td>INSERT, UPDATE, DELETE</td><td>SHARE, SHARE ROW EXCLUSIVE, EXCLUSIVE, ACCESS EXCLUSIVE</td></tr>
         <tr><td><code>SHARE UPDATE EXCLUSIVE</code></td><td>VACUUM, CREATE INDEX CONCURRENTLY</td><td>SHARE UPDATE EXCLUSIVE and above</td></tr>
-        <tr><td><code>SHARE</code></td><td>CREATE INDEX (non-concurrent)</td><td>ROW EXCLUSIVE and above</td></tr>
-        <tr><td><code>ACCESS EXCLUSIVE</code></td><td>ALTER TABLE, DROP TABLE, VACUUM FULL</td><td>Everything — no reads allowed</td></tr>
+        <tr><td><code>SHARE</code></td><td>CREATE INDEX (non-concurrent)</td><td>Writers and stronger table locks</td></tr>
+        <tr><td><code>ACCESS EXCLUSIVE</code></td><td>DROP TABLE, VACUUM FULL, many ALTER TABLE forms</td><td>Everything — no reads allowed</td></tr>
       </table>
 
       <h3>The ALTER TABLE lock queue problem <span class="pill hard">HIGH RISK</span></h3>
-      <p>ALTER TABLE takes <code>ACCESS EXCLUSIVE</code>. If a long SELECT is running, ALTER TABLE queues behind it. Every subsequent SELECT then queues behind the ALTER TABLE — effectively taking the table offline.</p>
+      <p>Many <code>ALTER TABLE</code> forms take <code>ACCESS EXCLUSIVE</code>, although some subcommands use weaker locks. If such an ALTER queues behind a long SELECT, later SELECTs can queue behind the waiting ALTER and effectively take the table offline.</p>
 
       <div class="mermaid">
 sequenceDiagram
@@ -497,7 +445,7 @@ SELECT pg_advisory_unlock(12345);</code></pre>
       <h2>Indexes</h2>
 
       <h3>B-tree (default)</h3>
-      <p>Balanced tree. O(log n) lookup. Supports =, &lt;, &gt;, BETWEEN, ORDER BY, LIKE 'prefix%'. The right answer for almost everything.</p>
+      <p>Balanced tree with logarithmic search. Supports equality, ranges, and ordered scans. Prefix <code>LIKE</code> queries can use it when the collation and operator class permit. It is the default choice for common scalar lookups.</p>
 
       <div class="mermaid">
 graph TD
@@ -526,17 +474,17 @@ CREATE INDEX idx_jobs_pending ON jobs (created_at)
 WHERE status = 'pending';</code></pre>
 
       <h3>Covering indexes (INCLUDE)</h3>
-      <p>Store extra columns in the index leaf — avoid the heap fetch entirely for queries that only need those columns.</p>
-      <pre><code>-- Query only needs id + status — never touches heap
+      <p>Store extra payload columns in the index so a query can use an index-only scan. Heap visits are avoided only for pages marked all-visible in the visibility map.</p>
+      <pre><code>-- Makes an index-only scan possible for this query shape
 CREATE INDEX idx_transfers_covering
 ON transfers (account_id)
 INCLUDE (id, status, amount);</code></pre>
 
       <h3>When the planner ignores your index</h3>
       <ul style="padding-left: 20px; margin-bottom: 14px; color: var(--text);">
-        <li style="margin-bottom: 8px;"><strong>Low selectivity</strong> — returning &gt;5-10% of table rows, sequential scan is cheaper</li>
+        <li style="margin-bottom: 8px;"><strong>Low selectivity</strong> — when many rows match, a sequential scan may be cheaper; there is no universal percentage cutoff</li>
         <li style="margin-bottom: 8px;"><strong>Stale statistics</strong> — run <code>ANALYZE</code></li>
-        <li style="margin-bottom: 8px;"><strong>Type mismatch</strong> — <code>WHERE id = '123'</code> when id is integer</li>
+        <li style="margin-bottom: 8px;"><strong>Incompatible expression or cast</strong> — applying a cast to the indexed column can prevent use of its normal operator class</li>
         <li style="margin-bottom: 8px;"><strong>Function on column</strong> — <code>WHERE lower(email) = 'x'</code> skips index on <code>email</code>; create a functional index instead</li>
         <li style="margin-bottom: 8px;"><strong>LIKE with leading wildcard</strong> — <code>LIKE '%foo'</code> can't use B-tree</li>
       </ul>
@@ -574,12 +522,12 @@ graph TD
         <tr><td><code>cost=X..Y</code></td><td>Estimated cost units. X = startup cost, Y = total cost.</td></tr>
         <tr><td><code>rows=N</code></td><td>Planner's estimated row count. Compare to <code>actual rows</code>.</td></tr>
         <tr><td><code>actual time</code></td><td>Real milliseconds. Only with ANALYZE.</td></tr>
-        <tr><td><code>Buffers: hit=X read=Y</code></td><td>X = from cache, Y = from disk. High reads = cold cache or missing index.</td></tr>
-        <tr><td><code>Rows removed by filter</code></td><td>Rows scanned but discarded. High = missing index or wrong plan.</td></tr>
+        <tr><td><code>Buffers: hit=X read=Y</code></td><td><code>hit</code> came from PostgreSQL shared buffers; <code>read</code> required a storage read request, which the OS cache may still satisfy.</td></tr>
+        <tr><td><code>Rows removed by filter</code></td><td>Rows scanned then discarded. A high count can indicate a poorly matched access path, but must be interpreted with execution time and loops.</td></tr>
       </table>
 
-      <h3>Row estimate mismatch — the root cause of bad plans</h3>
-      <p>If <code>rows=1</code> but <code>actual rows=50000</code>, the planner chose the wrong strategy. Fix: run <code>ANALYZE tablename</code> to refresh statistics, or increase <code>default_statistics_target</code> for skewed columns.</p>
+      <h3>Row estimate mismatch — a common cause of bad plans</h3>
+      <p>If <code>rows=1</code> but <code>actual rows=50000</code>, the planner made a poor cardinality estimate and may have chosen the wrong strategy. Refresh statistics first; for skewed columns, raise the per-column statistics target.</p>
 
       <pre><code>-- Refresh statistics
 ANALYZE transfers;
@@ -598,7 +546,7 @@ WHERE tablename = 'transfers' AND attname = 'status';</code></pre>
         <tr><th>Scan type</th><th>When used</th><th>Performance</th></tr>
         <tr><td>Sequential Scan</td><td>No index, or returning large % of rows</td><td>Fast for bulk reads, slow for lookups</td></tr>
         <tr><td>Index Scan</td><td>Selective query, index exists</td><td>Fast for selective queries, random I/O</td></tr>
-        <tr><td>Index Only Scan</td><td>All needed columns in covering index</td><td>Fastest — no heap access</td></tr>
+        <tr><td>Index Only Scan</td><td>All needed columns are in a supporting index</td><td>Can avoid heap access when pages are all-visible</td></tr>
         <tr><td>Bitmap Heap Scan</td><td>Multiple conditions, moderate selectivity</td><td>Batches heap reads for efficiency</td></tr>
       </table>
     </section>
@@ -608,7 +556,7 @@ WHERE tablename = 'transfers' AND attname = 'status';</code></pre>
     <!-- ─── WAL ─── -->
     <section id="wal">
       <h2>WAL — Write-Ahead Log</h2>
-      <p>Every change is written to the WAL before the data page is modified. This gives Postgres crash recovery (replay WAL to recover) and is the foundation for replication and CDC.</p>
+      <p>Postgres records changes in WAL and guarantees that each WAL record reaches durable storage before its corresponding dirty data page does. This enables crash recovery and provides the stream used by physical replication and logical decoding.</p>
 
       <div class="mermaid">
 sequenceDiagram
@@ -617,13 +565,15 @@ sequenceDiagram
   participant Heap
   participant Replica
 
-  App->>WAL: Write change record (LSN assigned)
-  WAL->>App: fsync ack (commit confirmed)
-  WAL-->>Heap: Data page updated (async)
-  WAL-->>Replica: WAL stream (replication)
+  App->>Heap: Modify page in shared memory
+  App->>WAL: Append change and commit records
+  WAL->>WAL: Flush WAL to durable storage
+  WAL-->>App: Commit confirmed
+  Heap-->>Heap: Dirty page written later
+  WAL-->>Replica: Stream WAL records
       </div>
 
-      <p>LSN = Log Sequence Number. A monotonically increasing position in the WAL stream. CDC systems (Debezium) use LSN as the ordering and dedup key — never the event timestamp.</p>
+      <p>LSN means Log Sequence Number: a position in the WAL stream. Logical-decoding and CDC systems use source log positions to preserve ordering and resume safely; wall-clock timestamps are not a reliable ordering mechanism.</p>
 
       <pre><code>-- Current WAL position
 SELECT pg_current_wal_lsn();
@@ -648,9 +598,6 @@ FROM pg_stat_replication;</code></pre>
       </ul>
     </div>
 
-  </main>
-</div>
-
 <script>
   mermaid.initialize({
     startOnLoad: true,
@@ -667,5 +614,6 @@ FROM pg_stat_replication;</code></pre>
   });
 </script>
 
+</main>
 </body>
 </html>
