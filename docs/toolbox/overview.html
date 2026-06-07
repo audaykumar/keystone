@@ -1,0 +1,1496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Systems Toolbox | keystone</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface-2: #1c222b;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --purple: #bc8cff;
+      --orange: #ffa657;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    .site-nav {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 40px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .nav-logo { color: var(--accent); font-size: 15px; font-weight: 700; text-decoration: none; }
+    .nav-sep { color: var(--border); }
+    .nav-desc { color: var(--muted); flex: 1; font-size: 13px; }
+    .nav-home { color: var(--muted); font-size: 13px; text-decoration: none; }
+    .nav-home:hover { color: var(--accent); }
+
+    main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 48px 40px 80px;
+    }
+
+    h1 { font-size: 2rem; margin-bottom: 8px; }
+    h2 {
+      border-bottom: 1px solid var(--border);
+      font-size: 1.3rem;
+      margin: 52px 0 18px;
+      padding-bottom: 8px;
+    }
+    h3 { color: var(--accent); font-size: 1rem; margin-bottom: 8px; }
+    p { margin-bottom: 14px; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--orange);
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 13px;
+      padding: 2px 6px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      margin-bottom: 32px;
+    }
+
+    .jump-nav {
+      background: rgba(22, 27, 34, 0.96);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin: 24px 0 32px;
+      padding: 14px 16px;
+      position: sticky;
+      top: 12px;
+      z-index: 10;
+    }
+    .jump-nav label {
+      color: var(--muted);
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      margin-bottom: 7px;
+      text-transform: uppercase;
+    }
+    .jump-select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+      padding: 9px 34px 9px 11px;
+      width: 100%;
+    }
+    .jump-select:focus {
+      border-color: var(--accent);
+      outline: 2px solid rgba(88, 166, 255, 0.2);
+    }
+
+    .callout {
+      background: #1c2a3a;
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      margin: 20px 0;
+      padding: 16px 20px;
+    }
+    .callout strong {
+      color: var(--accent);
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+    }
+
+    .job-map {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-top: 20px;
+    }
+    .job {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .job-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+    }
+    .job-tools {
+      display: flex;
+      flex-wrap: wrap;
+      font-size: 13px;
+      gap: 5px;
+    }
+    .job-tools a {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      padding: 2px 7px;
+    }
+    .job-tools a:hover,
+    .job-tools a:focus {
+      border-color: var(--accent);
+      color: var(--accent);
+      outline: none;
+      text-decoration: none;
+    }
+
+    .system-explorer {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.75fr);
+    }
+    .system-canvas,
+    .component-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .system-canvas {
+      min-width: 0;
+      overflow-x: auto;
+      padding: 14px;
+    }
+    .system-canvas svg {
+      display: block;
+      min-width: 920px;
+      width: 100%;
+    }
+    .system-zone {
+      fill: rgba(13, 17, 23, 0.52);
+      stroke: var(--border);
+      stroke-dasharray: 5 5;
+    }
+    .zone-label {
+      fill: var(--muted);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+    .system-edge {
+      fill: none;
+      opacity: 0.38;
+      stroke: var(--muted);
+      stroke-width: 2;
+      transition: opacity 160ms ease, stroke 160ms ease, stroke-width 160ms ease;
+    }
+    .system-edge[data-flow-type="async"] { stroke-dasharray: 8 5; }
+    .system-edge[data-flow-type="metrics"] { stroke-dasharray: 2 5; }
+    .system-edge[data-flow-type="workflow"] { stroke: var(--purple); }
+    .system-edge[data-flow-type="storage"] { stroke: var(--orange); }
+    .system-edge.is-active {
+      opacity: 1;
+      stroke: var(--accent);
+      stroke-width: 3;
+    }
+    .system-edge.is-muted { opacity: 0.08; }
+    .edge-hit {
+      cursor: pointer;
+      fill: none;
+      stroke: transparent;
+      stroke-width: 14;
+    }
+    .edge-label {
+      fill: var(--muted);
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 9px;
+      pointer-events: none;
+      text-anchor: middle;
+    }
+    .edge-label-bg {
+      fill: var(--surface);
+      opacity: 0.94;
+      stroke: var(--border);
+    }
+    .system-node {
+      cursor: pointer;
+      outline: none;
+    }
+    .system-node rect {
+      fill: var(--bg);
+      stroke: var(--border);
+      stroke-width: 2;
+      transition: fill 160ms ease, opacity 160ms ease, stroke 160ms ease;
+    }
+    .system-node text {
+      fill: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      font-weight: 650;
+      pointer-events: none;
+      text-anchor: middle;
+    }
+    .system-node .node-kind {
+      fill: var(--muted);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .system-node image {
+      pointer-events: none;
+    }
+    .system-node:hover rect,
+    .system-node:focus rect {
+      stroke: var(--accent);
+    }
+    .system-node.is-active rect {
+      fill: #1c2a3a;
+      stroke: var(--accent);
+      stroke-width: 3;
+    }
+    .system-node.is-muted rect,
+    .system-node.is-muted text { opacity: 0.3; }
+    .component-panel {
+      align-self: start;
+      min-height: 372px;
+      padding: 20px;
+      position: sticky;
+      top: 104px;
+    }
+    .component-panel .panel-eyebrow {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+    .component-panel h3 {
+      font-size: 1.2rem;
+      margin-bottom: 14px;
+    }
+    .panel-facts {
+      display: grid;
+      gap: 0;
+    }
+    .panel-fact {
+      border-top: 1px solid var(--border);
+      padding: 10px 0;
+    }
+    .panel-fact strong {
+      color: var(--muted);
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+    }
+    .panel-fact span { font-size: 13px; }
+    .panel-link {
+      display: inline-block;
+      font-size: 13px;
+      margin-top: 13px;
+    }
+    .panel-link[hidden] { display: none; }
+    .diagram-hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin: 10px 0 0;
+    }
+    .diagram-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      margin: 0 0 10px;
+    }
+    .legend-item {
+      align-items: center;
+      color: var(--muted);
+      display: flex;
+      font-size: 11px;
+      gap: 6px;
+    }
+    .legend-line {
+      border-top: 2px solid var(--muted);
+      display: inline-block;
+      width: 28px;
+    }
+    .legend-line.async { border-top-style: dashed; }
+    .legend-line.metrics { border-top-style: dotted; }
+    .legend-line.workflow { border-color: var(--purple); }
+
+    .chooser {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 22px;
+    }
+    .chooser-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 14px 0 18px;
+    }
+    .chooser button {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      color: var(--muted);
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+      padding: 7px 12px;
+    }
+    .chooser button:hover { border-color: var(--accent); color: var(--text); }
+    .chooser button.active {
+      background: #1c2a3a;
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    .chooser-result {
+      background: var(--bg);
+      border-radius: 8px;
+      min-height: 126px;
+      padding: 16px 18px;
+    }
+    .chooser-result h3 { margin: 0 0 7px; }
+    .chooser-result p { color: var(--muted); margin: 0; }
+    .chooser-tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .tool-pill {
+      background: #102a15;
+      border: 1px solid #275d38;
+      border-radius: 14px;
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 9px;
+    }
+
+    .tool-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .tool-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      scroll-margin-top: 112px;
+    }
+    .tool-card:target,
+    .tool-card.is-current {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.16);
+    }
+    .tool-card[data-category="database"] { border-top: 3px solid var(--accent); }
+    .tool-card[data-category="messaging"] { border-top: 3px solid var(--purple); }
+    .tool-card[data-category="platform"] { border-top: 3px solid var(--orange); }
+    .tool-card[data-category="operations"] { border-top: 3px solid var(--green); }
+
+    .tool-head {
+      align-items: center;
+      display: flex;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .tool-logo {
+      flex: 0 0 auto;
+      height: 30px;
+      object-fit: contain;
+      width: 30px;
+    }
+    .tool-heading {
+      flex: 1;
+      min-width: 0;
+    }
+    .tool-heading h3 { line-height: 1.25; margin: 0; }
+    .tool-heading h3 a { color: var(--accent); }
+    .official-link {
+      color: var(--muted);
+      flex: 0 0 auto;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .official-link:hover { color: var(--accent); }
+    .official-sites {
+      display: flex;
+      flex: 0 0 auto;
+      gap: 8px;
+    }
+    .kind {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+    .tool-summary {
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+    .fact {
+      border-top: 1px solid var(--border);
+      display: grid;
+      font-size: 13px;
+      gap: 10px;
+      grid-template-columns: 92px 1fr;
+      padding: 9px 0;
+    }
+    .fact-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .keys {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .key {
+      background: var(--surface-2);
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 12px;
+      padding: 2px 6px;
+    }
+    .back-to-tools {
+      border-top: 1px solid var(--border);
+      display: block;
+      font-size: 12px;
+      margin-top: 10px;
+      padding-top: 10px;
+    }
+
+    .flow-compare {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .flow-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .flow {
+      align-items: center;
+      display: flex;
+      gap: 8px;
+      margin: 18px 0;
+      overflow-x: auto;
+    }
+    .flow-node {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      flex: 0 0 auto;
+      padding: 9px 11px;
+      text-align: center;
+    }
+    .arrow { color: var(--accent); }
+
+    .matrix-wrap {
+      overflow-x: auto;
+    }
+    table {
+      border-collapse: collapse;
+      font-size: 13px;
+      width: 100%;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    tr:nth-child(even) td { background: #0f141a; }
+
+    .rules {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .rule {
+      background: var(--surface);
+      border-left: 3px solid var(--yellow);
+      border-radius: 7px;
+      padding: 14px 16px;
+    }
+
+    .sources {
+      columns: 2;
+      list-style-position: inside;
+      padding-left: 0;
+    }
+    .sources li {
+      break-inside: avoid;
+      margin-bottom: 8px;
+    }
+
+    @media (max-width: 800px) {
+      main { padding: 38px 20px 64px; }
+      .job-map { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .tool-grid, .flow-compare, .rules, .system-explorer { grid-template-columns: 1fr; }
+      .component-panel { min-height: 0; position: static; }
+      .sources { columns: 1; }
+    }
+
+    @media (max-width: 480px) {
+      .job-map { grid-template-columns: 1fr; }
+      .fact { grid-template-columns: 1fr; gap: 4px; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="site-nav"></div>
+<script src="../components/nav.js"></script>
+
+<main>
+  <h1>Systems Toolbox</h1>
+  <p class="subtitle">The basic mental models behind databases, caches, queues, logs, search engines, coordination stores, and workflow systems.</p>
+
+  <div class="callout">
+    <strong>First principle</strong>
+    Tools are bundles of trade-offs. Start with the workload and invariant, then choose the simplest tool whose behavior matches them.
+  </div>
+
+  <nav class="jump-nav" id="tool-jump" aria-label="Jump to a tool">
+    <label for="tool-select">Jump to tool</label>
+    <select class="jump-select" id="tool-select">
+      <option value="">Choose a tool...</option>
+      <optgroup label="Databases and data stores">
+        <option value="postgresql">PostgreSQL</option>
+        <option value="redis">Redis</option>
+        <option value="cassandra">Cassandra</option>
+        <option value="mongodb">MongoDB</option>
+        <option value="dynamodb">DynamoDB</option>
+        <option value="elasticsearch">Elasticsearch / OpenSearch</option>
+      </optgroup>
+      <optgroup label="Messaging">
+        <option value="kafka">Kafka</option>
+        <option value="sqs">Amazon SQS</option>
+        <option value="rabbitmq">RabbitMQ</option>
+      </optgroup>
+      <optgroup label="Platform and operations">
+        <option value="s3">S3-compatible storage</option>
+        <option value="etcd">etcd</option>
+        <option value="temporal">Temporal</option>
+        <option value="prometheus">Prometheus</option>
+      </optgroup>
+    </select>
+  </nav>
+
+  <section id="map">
+    <h2>Map Tools to Jobs</h2>
+    <div class="job-map">
+      <div class="job"><div class="job-label">Transactions</div><div class="job-tools"><a href="#postgresql">PostgreSQL</a><a href="#mongodb">MongoDB</a></div></div>
+      <div class="job"><div class="job-label">Fast shared state</div><div class="job-tools"><a href="#redis">Redis</a></div></div>
+      <div class="job"><div class="job-label">Replayable events</div><div class="job-tools"><a href="#kafka">Kafka</a></div></div>
+      <div class="job"><div class="job-label">Background work</div><div class="job-tools"><a href="#sqs">SQS</a><a href="#rabbitmq">RabbitMQ</a></div></div>
+      <div class="job"><div class="job-label">Global scale data</div><div class="job-tools"><a href="#cassandra">Cassandra</a><a href="#dynamodb">DynamoDB</a></div></div>
+      <div class="job"><div class="job-label">Search</div><div class="job-tools"><a href="#elasticsearch">Elasticsearch / OpenSearch</a></div></div>
+      <div class="job"><div class="job-label">Files and blobs</div><div class="job-tools"><a href="#s3">S3-compatible object storage</a></div></div>
+      <div class="job"><div class="job-label">Coordination</div><div class="job-tools"><a href="#etcd">etcd</a></div></div>
+      <div class="job"><div class="job-label">Long workflows</div><div class="job-tools"><a href="#temporal">Temporal</a></div></div>
+      <div class="job"><div class="job-label">Metrics</div><div class="job-tools"><a href="#prometheus">Prometheus</a></div></div>
+      <div class="job"><div class="job-label">Flexible documents</div><div class="job-tools"><a href="#mongodb">MongoDB</a></div></div>
+      <div class="job"><div class="job-label">Relational source of truth</div><div class="job-tools"><a href="#postgresql">PostgreSQL</a></div></div>
+    </div>
+  </section>
+
+  <section id="system">
+    <h2>Explore a Payment System</h2>
+    <p>One system does not need every tool. This design uses each component for a specific job. Select a component to inspect its role and connections.</p>
+
+    <div class="system-explorer">
+      <div class="system-canvas">
+        <div class="diagram-legend" aria-label="Connection legend">
+          <span class="legend-item"><span class="legend-line"></span>Synchronous request</span>
+          <span class="legend-item"><span class="legend-line async"></span>Asynchronous delivery</span>
+          <span class="legend-item"><span class="legend-line workflow"></span>Workflow command</span>
+          <span class="legend-item"><span class="legend-line metrics"></span>Metrics scrape</span>
+        </div>
+        <svg viewBox="0 0 980 640" role="img" aria-labelledby="system-title system-description">
+          <title id="system-title">Clickable payment platform architecture</title>
+          <desc id="system-description">A client calls an API backed by PostgreSQL and Redis. PostgreSQL publishes events through Kafka. Workers consume jobs and write to search and object storage. Temporal coordinates long-running payment flows. Prometheus observes services.</desc>
+          <defs>
+            <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+              <path d="M0,0 L8,4 L0,8 Z" fill="context-stroke"></path>
+            </marker>
+          </defs>
+
+          <rect class="system-zone" x="18" y="28" width="150" height="180" rx="12"></rect>
+          <text class="zone-label" x="34" y="50">CLIENT EDGE</text>
+          <rect class="system-zone" x="185" y="28" width="310" height="310" rx="12"></rect>
+          <text class="zone-label" x="201" y="50">APPLICATION SERVICES</text>
+          <rect class="system-zone" x="512" y="28" width="450" height="310" rx="12"></rect>
+          <text class="zone-label" x="528" y="50">TRANSACTIONAL AND DELIVERY LAYER</text>
+          <rect class="system-zone" x="185" y="358" width="777" height="260" rx="12"></rect>
+          <text class="zone-label" x="201" y="380">ASYNC PROCESSING AND DERIVED DATA</text>
+
+          <g data-connection="client-api" role="button" tabindex="0" aria-label="Client to API HTTPS request">
+            <path class="system-edge" data-edge="client api" data-flow-type="sync" d="M156 116 H230" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M156 116 H230"></path>
+            <rect class="edge-label-bg" x="168" y="96" width="52" height="16" rx="4"></rect>
+            <text class="edge-label" x="194" y="107">HTTPS</text>
+          </g>
+          <g data-connection="api-postgres" role="button" tabindex="0" aria-label="API to PostgreSQL SQL transaction">
+            <path class="system-edge" data-edge="api postgres" data-flow-type="sync" d="M390 116 H555" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M390 116 H555"></path>
+            <rect class="edge-label-bg" x="432" y="96" width="78" height="16" rx="4"></rect>
+            <text class="edge-label" x="471" y="107">SQL + TXN</text>
+          </g>
+          <g data-connection="api-redis" role="button" tabindex="0" aria-label="API to Redis cache operation">
+            <path class="system-edge" data-edge="api redis" data-flow-type="sync" d="M310 154 V224" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M310 154 V224"></path>
+            <rect class="edge-label-bg" x="318" y="180" width="80" height="16" rx="4"></rect>
+            <text class="edge-label" x="358" y="191">GET / SET</text>
+          </g>
+          <g data-connection="postgres-kafka" role="button" tabindex="0" aria-label="PostgreSQL outbox to Kafka event">
+            <path class="system-edge" data-edge="postgres kafka" data-flow-type="async" d="M635 154 V224" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M635 154 V224"></path>
+            <rect class="edge-label-bg" x="645" y="180" width="92" height="16" rx="4"></rect>
+            <text class="edge-label" x="691" y="191">OUTBOX EVENT</text>
+          </g>
+          <g data-connection="api-sqs" role="button" tabindex="0" aria-label="API sends background job to SQS">
+            <path class="system-edge" data-edge="api sqs" data-flow-type="async" d="M390 132 C500 170 650 255 758 278" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M390 132 C500 170 650 255 758 278"></path>
+            <rect class="edge-label-bg" x="516" y="190" width="78" height="16" rx="4"></rect>
+            <text class="edge-label" x="555" y="201">SEND JOB</text>
+          </g>
+          <g data-connection="temporal-api" role="button" tabindex="0" aria-label="Temporal invokes API activity">
+            <path class="system-edge" data-edge="temporal api" data-flow-type="workflow" d="M310 286 V154" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M310 286 V154"></path>
+            <rect class="edge-label-bg" x="200" y="200" width="98" height="16" rx="4"></rect>
+            <text class="edge-label" x="249" y="211">ACTIVITY CALL</text>
+          </g>
+          <g data-connection="kafka-workers" role="button" tabindex="0" aria-label="Workers consume Kafka events">
+            <path class="system-edge" data-edge="kafka workers" data-flow-type="async" d="M635 300 C610 356 520 390 455 432" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M635 300 C610 356 520 390 455 432"></path>
+            <rect class="edge-label-bg" x="532" y="360" width="104" height="16" rx="4"></rect>
+            <text class="edge-label" x="584" y="371">POLL + OFFSET</text>
+          </g>
+          <g data-connection="sqs-workers" role="button" tabindex="0" aria-label="Workers receive and acknowledge SQS jobs">
+            <path class="system-edge" data-edge="sqs workers" data-flow-type="async" d="M798 316 C750 390 570 420 455 452" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M798 316 C750 390 570 420 455 452"></path>
+            <rect class="edge-label-bg" x="640" y="392" width="92" height="16" rx="4"></rect>
+            <text class="edge-label" x="686" y="403">RECEIVE + ACK</text>
+          </g>
+          <g data-connection="temporal-workers" role="button" tabindex="0" aria-label="Temporal dispatches activities to workers">
+            <path class="system-edge" data-edge="temporal workers" data-flow-type="workflow" d="M350 324 C365 365 390 395 400 422" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M350 324 C365 365 390 395 400 422"></path>
+            <rect class="edge-label-bg" x="310" y="370" width="92" height="16" rx="4"></rect>
+            <text class="edge-label" x="356" y="381">TASK QUEUE</text>
+          </g>
+          <g data-connection="workers-search" role="button" tabindex="0" aria-label="Workers index documents into OpenSearch">
+            <path class="system-edge" data-edge="workers search" data-flow-type="async" d="M455 460 H585" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M455 460 H585"></path>
+            <rect class="edge-label-bg" x="480" y="440" width="80" height="16" rx="4"></rect>
+            <text class="edge-label" x="520" y="451">INDEX DOC</text>
+          </g>
+          <g data-connection="workers-s3" role="button" tabindex="0" aria-label="Workers put objects into S3">
+            <path class="system-edge" data-edge="workers s3" data-flow-type="storage" d="M395 498 L340 548" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M395 498 L340 548"></path>
+            <rect class="edge-label-bg" x="330" y="510" width="72" height="16" rx="4"></rect>
+            <text class="edge-label" x="366" y="521">PUT OBJECT</text>
+          </g>
+          <g data-connection="prometheus-services" role="button" tabindex="0" aria-label="Prometheus scrapes API and worker metrics">
+            <path class="system-edge" data-edge="prometheus api workers" data-flow-type="metrics" d="M845 574 C760 530 560 515 455 482 M845 574 C690 460 500 245 390 140" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M845 574 C760 530 560 515 455 482 M845 574 C690 460 500 245 390 140"></path>
+            <rect class="edge-label-bg" x="690" y="520" width="98" height="16" rx="4"></rect>
+            <text class="edge-label" x="739" y="531">GET /metrics</text>
+          </g>
+
+          <g class="system-node" data-component="client" role="button" tabindex="0" aria-label="Client">
+            <rect x="38" y="78" width="118" height="76" rx="9"></rect>
+            <text x="97" y="108">Client</text>
+            <text class="node-kind" x="97" y="128">WEB / MOBILE</text>
+            <path d="M82 136 h30" stroke="#58a6ff" stroke-width="3"></path>
+          </g>
+          <g class="system-node" data-component="api" role="button" tabindex="0" aria-label="API service">
+            <rect x="230" y="78" width="160" height="76" rx="9"></rect>
+            <text x="310" y="108">Payment API</text>
+            <text class="node-kind" x="310" y="128">PYTHON SERVICE</text>
+            <circle cx="252" cy="116" r="12" fill="#3776ab"></circle>
+            <text x="252" y="120" font-size="9">Py</text>
+          </g>
+          <g class="system-node" data-component="postgres" role="button" tabindex="0" aria-label="PostgreSQL">
+            <rect x="555" y="78" width="160" height="76" rx="9"></rect>
+            <image href="https://cdn.simpleicons.org/postgresql/4169E1" x="570" y="94" width="28" height="28"></image>
+            <text x="645" y="108">PostgreSQL</text>
+            <text class="node-kind" x="645" y="128">SOURCE OF TRUTH</text>
+          </g>
+          <g class="system-node" data-component="temporal" role="button" tabindex="0" aria-label="Temporal">
+            <rect x="230" y="248" width="160" height="76" rx="9"></rect>
+            <image href="https://cdn.simpleicons.org/temporal/FFFFFF" x="245" y="264" width="28" height="28"></image>
+            <text x="320" y="278">Temporal</text>
+            <text class="node-kind" x="320" y="298">DURABLE WORKFLOW</text>
+          </g>
+          <g class="system-node" data-component="redis" role="button" tabindex="0" aria-label="Redis">
+            <rect x="410" y="248" width="145" height="76" rx="9"></rect>
+            <image href="https://cdn.simpleicons.org/redis/FF4438" x="424" y="264" width="28" height="28"></image>
+            <text x="490" y="278">Redis</text>
+            <text class="node-kind" x="490" y="298">CACHE + LIMITS</text>
+          </g>
+          <g class="system-node" data-component="kafka" role="button" tabindex="0" aria-label="Kafka">
+            <rect x="555" y="224" width="160" height="76" rx="9"></rect>
+            <image href="https://cdn.simpleicons.org/apachekafka/FFFFFF" x="570" y="240" width="28" height="28"></image>
+            <text x="645" y="254">Kafka</text>
+            <text class="node-kind" x="645" y="274">EVENT HISTORY</text>
+          </g>
+          <g class="system-node" data-component="sqs" role="button" tabindex="0" aria-label="Amazon SQS">
+            <rect x="758" y="248" width="160" height="76" rx="9"></rect>
+            <circle cx="787" cy="278" r="14" fill="#FF4F8B"></circle>
+            <text x="787" y="281" font-size="7">SQS</text>
+            <text x="848" y="278">Amazon SQS</text>
+            <text class="node-kind" x="848" y="298">WORK QUEUE</text>
+          </g>
+          <g class="system-node" data-component="workers" role="button" tabindex="0" aria-label="Worker services">
+            <rect x="295" y="422" width="160" height="76" rx="9"></rect>
+            <text x="375" y="452">Worker Pool</text>
+            <text class="node-kind" x="375" y="472">ASYNC SERVICES</text>
+            <circle cx="318" cy="460" r="12" fill="#00add8"></circle>
+            <text x="318" y="464" font-size="8">Go</text>
+          </g>
+          <g class="system-node" data-component="search" role="button" tabindex="0" aria-label="OpenSearch">
+            <rect x="585" y="422" width="160" height="76" rx="9"></rect>
+            <image href="https://cdn.simpleicons.org/opensearch/005EB8" x="600" y="438" width="28" height="28"></image>
+            <text x="675" y="452">OpenSearch</text>
+            <text class="node-kind" x="675" y="472">SEARCH PROJECTION</text>
+          </g>
+          <g class="system-node" data-component="s3" role="button" tabindex="0" aria-label="S3 object storage">
+            <rect x="235" y="548" width="150" height="58" rx="9"></rect>
+            <circle cx="263" cy="577" r="13" fill="#569A31"></circle>
+            <text x="263" y="580" font-size="8">S3</text>
+            <text x="325" y="573">Amazon S3</text>
+            <text class="node-kind" x="325" y="591">FILES + EXPORTS</text>
+          </g>
+          <g class="system-node" data-component="prometheus" role="button" tabindex="0" aria-label="Prometheus">
+            <rect x="805" y="548" width="145" height="58" rx="9"></rect>
+            <image href="https://cdn.simpleicons.org/prometheus/E6522C" x="818" y="563" width="26" height="26"></image>
+            <text x="888" y="573">Prometheus</text>
+            <text class="node-kind" x="888" y="591">METRICS</text>
+          </g>
+        </svg>
+        <p class="diagram-hint">Tip: use Tab and Enter to explore without a mouse. Scroll horizontally on small screens.</p>
+      </div>
+
+      <aside class="component-panel" aria-live="polite">
+        <div class="panel-eyebrow" id="component-kind">Architecture explorer</div>
+        <h3 id="component-title">Select a component</h3>
+        <p id="component-summary">Click any box to see why it exists, what passes through it, and what happens when it fails.</p>
+        <div class="panel-facts" id="component-facts"></div>
+        <a class="panel-link" id="component-link" href="#system" hidden>Read its toolbox summary</a>
+      </aside>
+    </div>
+  </section>
+
+  <section id="chooser">
+    <h2>Choose by Workload</h2>
+    <div class="chooser">
+      <p>Select the primary job. The result is a starting point, not an architecture generator.</p>
+      <div class="chooser-options">
+        <button type="button" data-choice="money">Money and strong invariants</button>
+        <button type="button" data-choice="cache">Sub-millisecond shared state</button>
+        <button type="button" data-choice="events">Event history and replay</button>
+        <button type="button" data-choice="jobs">Background jobs</button>
+        <button type="button" data-choice="routing">Complex message routing</button>
+        <button type="button" data-choice="global">High-scale multi-region writes</button>
+        <button type="button" data-choice="search">Full-text search</button>
+        <button type="button" data-choice="files">Large files and archives</button>
+        <button type="button" data-choice="coordination">Cluster coordination</button>
+        <button type="button" data-choice="workflow">Long-running workflows</button>
+      </div>
+      <div class="chooser-result" aria-live="polite">
+        <h3 id="choice-title">Choose a workload</h3>
+        <div class="chooser-tools" id="choice-tools"></div>
+        <p id="choice-description">The recommendation will explain the useful starting tool and the main caveat.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="databases">
+    <h2>Databases and Data Stores</h2>
+    <div class="tool-grid">
+      <article class="tool-card" id="postgresql" data-category="database">
+        <div class="tool-head"><img class="tool-logo" src="assets/logos/postgresql.svg" alt=""><div class="tool-heading"><h3><a href="https://www.postgresql.org/">PostgreSQL</a></h3><span class="kind">Relational OLTP</span></div><a class="official-link" href="https://www.postgresql.org/">Official site ↗</a></div>
+        <p class="tool-summary">A general-purpose transactional database built around tables, SQL, constraints, indexes, MVCC, and WAL.</p>
+        <div class="fact"><div class="fact-label">How it works</div><div>Rows live in heap pages. Indexes provide alternate access paths. Transactions use MVCC and locks. WAL enables crash recovery and replication.</div></div>
+        <div class="fact"><div class="fact-label">Key concepts</div><div class="keys"><span class="key">transactions</span><span class="key">constraints</span><span class="key">MVCC</span><span class="key">indexes</span><span class="key">WAL</span><span class="key">replicas</span></div></div>
+        <div class="fact"><div class="fact-label">Use for</div><div>Systems of record, money, orders, accounts, joins, and data with strong invariants.</div></div>
+        <div class="fact"><div class="fact-label">Trade-off</div><div>Scaling writes across many nodes is harder than scaling a partition-native database.</div></div>
+        <a class="back-to-tools" href="#tool-jump">Back to tool picker</a>
+      </article>
+
+      <article class="tool-card" id="redis" data-category="database">
+        <div class="tool-head"><img class="tool-logo" src="assets/logos/redis.svg" alt=""><div class="tool-heading"><h3><a href="https://redis.io/">Redis</a></h3><span class="kind">In-memory data structures</span></div><a class="official-link" href="https://redis.io/">Official site ↗</a></div>
+        <p class="tool-summary">A low-latency server exposing strings, hashes, sets, sorted sets, streams, counters, and expiration.</p>
+        <div class="fact"><div class="fact-label">How it works</div><div>Commands modify in-memory structures through a mostly single-threaded execution model. Optional RDB snapshots or AOF logs persist data.</div></div>
+        <div class="fact"><div class="fact-label">Key concepts</div><div class="keys"><span class="key">TTL</span><span class="key">eviction</span><span class="key">RDB</span><span class="key">AOF</span><span class="key">replication</span><span class="key">cluster slots</span></div></div>
+        <div class="fact"><div class="fact-label">Use for</div><div>Caches, counters, rate limits, sessions, leaderboards, short-lived coordination, and fast derived state.</div></div>
+        <div class="fact"><div class="fact-label">Trade-off</div><div>Memory is expensive, durability depends on configuration, and slow commands can stall unrelated clients.</div></div>
+        <a class="back-to-tools" href="#tool-jump">Back to tool picker</a>
+      </article>
+
+      <article class="tool-card" id="cassandra" data-category="database">
+        <div class="tool-head"><img class="tool-logo" src="assets/logos/cassandra.svg" alt=""><div class="tool-heading"><h3><a href="https://cassandra.apache.org/">Cassandra</a></h3><span class="kind">Wide-column distributed DB</span></div><a class="official-link" href="https://cassandra.apache.org/">Official site ↗</a></div>
+        <p class="tool-summary">A partition-first database for high write volume, large data sets, multi-node availability, and predictable access patterns.</p>
+        <div class="fact"><div class="fact-label">How it works</div><div>A partition key maps data to token ranges and replicas. Writes follow an LSM path: commit log, memtable, then immutable SSTables and compaction.</div></div>
+        <div class="fact"><div class="fact-label">Key concepts</div><div class="keys"><span class="key">partition key</span><span class="key">clustering columns</span><span class="key">replication factor</span><span class="key">consistency level</span><span class="key">SSTable</span><span class="key">compaction</span></div></div>
+        <div class="fact"><div class="fact-label">Use for</div><div>Massive write-heavy time-series or event data with known query patterns and high availability requirements.</div></div>
+        <div class="fact"><div class="fact-label">Trade-off</div><div>No joins, limited ad hoc queries, careful partition sizing, and data modeling must begin from access patterns.</div></div>
+        <a class="back-to-tools" href="#tool-jump">Back to tool picker</a>
+      </article>
+
+      <article class="tool-card" id="mongodb" data-category="database">
+        <div class="tool-head"><img class="tool-logo" src="assets/logos/mongodb.svg" alt=""><div class="tool-heading"><h3><a href="https://www.mongodb.com/">MongoDB</a></h3><span class="kind">Document database</span></div><a class="official-link" href="https://www.mongodb.com/">Official site ↗</a></div>
+        <p class="tool-summary">Stores JSON-like documents and favors embedding related data that is commonly read together.</p>
+        <div class="fact"><div class="fact-label">How it works</div><div>Replica sets elect a primary and asynchronously apply its oplog to secondaries. Sharding distributes documents using a shard key and query routers.</div></div>
+        <div class="fact"><div class="fact-label">Key concepts</div><div class="keys"><span class="key">documents</span><span class="key">collections</span><span class="key">replica set</span><span class="key">oplog</span><span class="key">shard key</span><span class="key">read/write concern</span></div></div>
+        <div class="fact"><div class="fact-label">Use for</div><div>Flexible records, content, catalogs, user profiles, and domains where aggregate-shaped documents fit naturally.</div></div>
+        <div class="fact"><div class="fact-label">Trade-off</div><div>Embedding can duplicate data; cross-document transactions and poor shard keys add distributed complexity.</div></div>
+        <a class="back-to-tools" href="#tool-jump">Back to tool picker</a>
+      </article>
+
+      <article class="tool-card" id="dynamodb" data-category="database">
+        <div class="tool-head"><img class="tool-logo" src="assets/logos/dynamodb.svg" alt=""><div class="tool-heading"><h3><a href="https://aws.amazon.com/dynamodb/">DynamoDB</a></h3><span class="kind">Managed key-value/document DB</span></div><a class="official-link" href="https://aws.amazon.com/dynamodb/">Official site ↗</a></div>
+        <p class="tool-summary">An AWS-managed, partitioned database designed around predictable key-based access at large scale.</p>
+        <div class="fact"><div class="fact-label">How it works</div><div>A partition key determines data placement. Sort keys group ordered items. Secondary indexes create additional access paths. AWS manages replication and partitions.</div></div>
+        <div class="fact"><div class="fact-label">Key concepts</div><div class="keys"><span class="key">partition key</span><span class="key">sort key</span><span class="key">GSI</span><span class="key">LSI</span><span class="key">capacity</span><span class="key">streams</span></div></div>
+        <div class="fact"><div class="fact-label">Use for</div><div>Serverless or AWS-native systems with known access patterns, high scale, and minimal database operations work.</div></div>
+        <div class="fact"><div class="fact-label">Trade-off</div><div>Modeling is access-pattern-first, hot keys remain possible, and ad hoc relational queries are a poor fit.</div></div>
+        <a class="back-to-tools" href="#tool-jump">Back to tool picker</a>
+      </article>
+
+      <article class="tool-card" id="elasticsearch" data-category="platform">
+        <div class="tool-head"><img class="tool-logo" src="assets/logos/opensearch.svg" alt=""><div class="tool-heading"><h3><a href="https://www.elastic.co/elasticsearch">Elasticsearch</a> / <a href="https://opensearch.org/">OpenSearch</a></h3><span class="kind">Search and analytics</span></div><span class="official-sites"><a class="official-link" href="https://www.elastic.co/elasticsearch">Elastic ↗</a><a class="official-link" href="https://opensearch.org/">OpenSearch ↗</a></span></div>
+        <p class="tool-summary">Distributed search engines built on inverted indexes, optimized for relevance, filtering, and aggregations.</p>
+        <div class="fact"><div class="fact-label">How it works</div><div>Documents are analyzed into terms and written to Lucene segments. An index is split into primary shards and replica shards across nodes.</div></div>
+        <div class="fact"><div class="fact-label">Key concepts</div><div class="keys"><span class="key">mapping</span><span class="key">analyzer</span><span class="key">inverted index</span><span class="key">segment</span><span class="key">shard</span><span class="key">refresh</span></div></div>
+        <div class="fact"><div class="fact-label">Use for</div><div>Full-text search, logs, observability search, faceting, and relevance-ranked retrieval.</div></div>
+        <div class="fact"><div class="fact-label">Trade-off</div><div>Near-real-time visibility, costly updates, shard overhead, and usually a poor primary source of truth.</div></div>
+        <a class="back-to-tools" href="#tool-jump">Back to tool picker</a>
+      </article>
+    </div>
+  </section>
+
+  <section id="messaging">
+    <h2>Messaging: Queue or Log?</h2>
+    <div class="flow-compare">
+      <div class="flow-panel">
+        <h3>Queue: work is claimed</h3>
+        <div class="flow"><div class="flow-node">Producer</div><div class="arrow">→</div><div class="flow-node">Queue</div><div class="arrow">→</div><div class="flow-node">One worker</div></div>
+        <p>A queue distributes tasks. A message is acknowledged or deleted after processing. Retries return failed work for another attempt.</p>
+      </div>
+      <div class="flow-panel">
+        <h3>Log: history is retained</h3>
+        <div class="flow"><div class="flow-node">Producer</div><div class="arrow">→</div><div class="flow-node">Partition log</div><div class="arrow">→</div><div class="flow-node">Many readers</div></div>
+        <p>A log retains ordered events. Consumers track offsets and may replay history independently.</p>
+      </div>
+    </div>
+
+    <div class="tool-grid" style="margin-top: 16px;">
+      <article class="tool-card" id="kafka" data-category="messaging">
+        <div class="tool-head"><img class="tool-logo" src="assets/logos/kafka.svg" alt=""><div class="tool-heading"><h3><a href="https://kafka.apache.org/">Kafka</a></h3><span class="kind">Distributed event log</span></div><a class="official-link" href="https://kafka.apache.org/">Official site ↗</a></div>
+        <p class="tool-summary">A replayable, partitioned log for durable event streams and independent consumer groups.</p>
+        <div class="fact"><div class="fact-label">How it works</div><div>Producers append records to topic partitions. Each partition has an ordered offset sequence, a leader, and replicas. Consumers advance offsets.</div></div>
+        <div class="fact"><div class="fact-label">Key concepts</div><div class="keys"><span class="key">topic</span><span class="key">partition</span><span class="key">key</span><span class="key">offset</span><span class="key">consumer group</span><span class="key">ISR</span><span class="key">retention</span></div></div>
+        <div class="fact"><div class="fact-label">Use for</div><div>Event backbones, CDC, audit streams, stream processing, replay, and many independent consumers.</div></div>
+        <div class="fact"><div class="fact-label">Trade-off</div><div>Ordering exists only inside one partition; partition count, key choice, lag, and rebalances become operational concerns.</div></div>
+        <a class="back-to-tools" href="#tool-jump">Back to tool picker</a>
+      </article>
+
+      <article class="tool-card" id="sqs" data-category="messaging">
+        <div class="tool-head"><img class="tool-logo" src="assets/logos/sqs.svg" alt=""><div class="tool-heading"><h3><a href="https://aws.amazon.com/sqs/">Amazon SQS</a></h3><span class="kind">Managed work queue</span></div><a class="official-link" href="https://aws.amazon.com/sqs/">Official site ↗</a></div>
+        <p class="tool-summary">A fully managed AWS queue for decoupling producers from background workers.</p>
+        <div class="fact"><div class="fact-label">How it works</div><div>A consumer receives a message, which becomes hidden for a visibility timeout. It deletes the message after success; otherwise the message becomes visible again.</div></div>
+        <div class="fact"><div class="fact-label">Key concepts</div><div class="keys"><span class="key">visibility timeout</span><span class="key">at-least-once</span><span class="key">long polling</span><span class="key">DLQ</span><span class="key">redrive</span><span class="key">FIFO groups</span></div></div>
+        <div class="fact"><div class="fact-label">Use for</div><div>AWS background jobs where simple operations, automatic scaling, and low maintenance matter.</div></div>
+        <div class="fact"><div class="fact-label">Trade-off</div><div>Standard queues can duplicate and reorder messages. Routing and replay are much more limited than RabbitMQ or Kafka.</div></div>
+        <a class="back-to-tools" href="#tool-jump">Back to tool picker</a>
+      </article>
+
+      <article class="tool-card" id="rabbitmq" data-category="messaging">
+        <div class="tool-head"><img class="tool-logo" src="assets/logos/rabbitmq.svg" alt=""><div class="tool-heading"><h3><a href="https://www.rabbitmq.com/">RabbitMQ</a></h3><span class="kind">Message broker</span></div><a class="official-link" href="https://www.rabbitmq.com/">Official site ↗</a></div>
+        <p class="tool-summary">A broker with flexible routing between publishers, exchanges, bindings, queues, and consumers.</p>
+        <div class="fact"><div class="fact-label">How it works</div><div>Publishers send to exchanges. Exchange type and bindings route each message to queues. Consumers acknowledge deliveries. Quorum queues replicate through Raft.</div></div>
+        <div class="fact"><div class="fact-label">Key concepts</div><div class="keys"><span class="key">exchange</span><span class="key">binding</span><span class="key">queue</span><span class="key">ack/nack</span><span class="key">prefetch</span><span class="key">publisher confirm</span><span class="key">quorum queue</span></div></div>
+        <div class="fact"><div class="fact-label">Use for</div><div>Work queues, request routing, priorities, per-message retries, and sophisticated message topologies.</div></div>
+        <div class="fact"><div class="fact-label">Trade-off</div><div>More topology and broker operations than SQS; less natural replay and event history than Kafka.</div></div>
+        <a class="back-to-tools" href="#tool-jump">Back to tool picker</a>
+      </article>
+    </div>
+  </section>
+
+  <section id="platform">
+    <h2>Platform Building Blocks</h2>
+    <div class="tool-grid">
+      <article class="tool-card" id="s3" data-category="platform">
+        <div class="tool-head"><img class="tool-logo" src="assets/logos/s3.svg" alt=""><div class="tool-heading"><h3><a href="https://aws.amazon.com/s3/">S3-compatible storage</a></h3><span class="kind">Object storage</span></div><a class="official-link" href="https://aws.amazon.com/s3/">Official site ↗</a></div>
+        <p class="tool-summary">Stores byte objects addressed by bucket and key, separate from a filesystem or relational schema.</p>
+        <div class="fact"><div class="fact-label">How it works</div><div>Clients PUT and GET complete objects. Metadata, versioning, lifecycle rules, multipart upload, replication, and access policy surround the object.</div></div>
+        <div class="fact"><div class="fact-label">Key concepts</div><div class="keys"><span class="key">bucket</span><span class="key">object key</span><span class="key">version</span><span class="key">multipart</span><span class="key">presigned URL</span><span class="key">lifecycle</span></div></div>
+        <div class="fact"><div class="fact-label">Use for</div><div>Images, videos, documents, backups, archives, exports, and data lakes.</div></div>
+        <div class="fact"><div class="fact-label">Trade-off</div><div>Not a POSIX filesystem or query engine. Object updates replace the object rather than editing arbitrary blocks in place.</div></div>
+        <a class="back-to-tools" href="#tool-jump">Back to tool picker</a>
+      </article>
+
+      <article class="tool-card" id="etcd" data-category="platform">
+        <div class="tool-head"><img class="tool-logo" src="assets/logos/etcd.svg" alt=""><div class="tool-heading"><h3><a href="https://etcd.io/">etcd</a></h3><span class="kind">Consensus key-value store</span></div><a class="official-link" href="https://etcd.io/">Official site ↗</a></div>
+        <p class="tool-summary">A small, strongly consistent store for configuration, service discovery, leader election, and cluster metadata.</p>
+        <div class="fact"><div class="fact-label">How it works</div><div>A Raft group orders writes. Keys have monotonically increasing revisions. Clients can watch changes and attach keys to expiring leases.</div></div>
+        <div class="fact"><div class="fact-label">Key concepts</div><div class="keys"><span class="key">Raft</span><span class="key">revision</span><span class="key">watch</span><span class="key">lease</span><span class="key">transaction</span><span class="key">compaction</span></div></div>
+        <div class="fact"><div class="fact-label">Use for</div><div>Small, critical coordination data. Kubernetes uses etcd for cluster state.</div></div>
+        <div class="fact"><div class="fact-label">Trade-off</div><div>Not for large values, high write volume, analytics, or ordinary application records.</div></div>
+        <a class="back-to-tools" href="#tool-jump">Back to tool picker</a>
+      </article>
+
+      <article class="tool-card" id="temporal" data-category="platform">
+        <div class="tool-head"><img class="tool-logo" src="assets/logos/temporal.svg" alt=""><div class="tool-heading"><h3><a href="https://temporal.io/">Temporal</a></h3><span class="kind">Durable workflow engine</span></div><a class="official-link" href="https://temporal.io/">Official site ↗</a></div>
+        <p class="tool-summary">Runs long-lived business workflows that resume after worker crashes, process restarts, and infrastructure failures.</p>
+        <div class="fact"><div class="fact-label">How it works</div><div>The service persists workflow event history. Workflow code is replayed deterministically to reconstruct state. Activities perform external side effects and are retried.</div></div>
+        <div class="fact"><div class="fact-label">Key concepts</div><div class="keys"><span class="key">workflow</span><span class="key">activity</span><span class="key">history</span><span class="key">replay</span><span class="key">timer</span><span class="key">signal</span><span class="key">retry</span></div></div>
+        <div class="fact"><div class="fact-label">Use for</div><div>Payment flows, fulfillment, onboarding, scheduled work, human approval, and multi-day processes.</div></div>
+        <div class="fact"><div class="fact-label">Trade-off</div><div>Workflow determinism, versioning running executions, another operational dependency, and activity idempotency.</div></div>
+        <a class="back-to-tools" href="#tool-jump">Back to tool picker</a>
+      </article>
+
+      <article class="tool-card" id="prometheus" data-category="operations">
+        <div class="tool-head"><img class="tool-logo" src="assets/logos/prometheus.svg" alt=""><div class="tool-heading"><h3><a href="https://prometheus.io/">Prometheus</a></h3><span class="kind">Metrics and alerting</span></div><a class="official-link" href="https://prometheus.io/">Official site ↗</a></div>
+        <p class="tool-summary">A pull-based monitoring system and time-series database for numeric measurements with labels.</p>
+        <div class="fact"><div class="fact-label">How it works</div><div>Prometheus scrapes metric endpoints on an interval, stores labeled time series, evaluates PromQL queries, and sends alerts through Alertmanager.</div></div>
+        <div class="fact"><div class="fact-label">Key concepts</div><div class="keys"><span class="key">counter</span><span class="key">gauge</span><span class="key">histogram</span><span class="key">label</span><span class="key">scrape</span><span class="key">PromQL</span><span class="key">cardinality</span></div></div>
+        <div class="fact"><div class="fact-label">Use for</div><div>Service health, latency, throughput, errors, saturation, queue depth, and alerting.</div></div>
+        <div class="fact"><div class="fact-label">Trade-off</div><div>High-cardinality labels are expensive. Metrics summarize behavior; they do not replace logs or traces.</div></div>
+        <a class="back-to-tools" href="#tool-jump">Back to tool picker</a>
+      </article>
+    </div>
+  </section>
+
+  <section id="matrix">
+    <h2>Quick Comparison</h2>
+    <div class="matrix-wrap">
+      <table>
+        <thead>
+          <tr><th>Tool</th><th>Primary model</th><th>Ordering / consistency</th><th>Scaling unit</th><th>Best remembered as</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>PostgreSQL</td><td>Relational rows</td><td>ACID transactions; configurable isolation</td><td>Database, table, replica</td><td>Transactional source of truth</td></tr>
+          <tr><td>Redis</td><td>In-memory structures</td><td>Atomic command execution; replication caveats</td><td>Key / hash slot</td><td>Fast shared derived state</td></tr>
+          <tr><td>Kafka</td><td>Partitioned append log</td><td>Total order per partition</td><td>Partition</td><td>Replayable event history</td></tr>
+          <tr><td>SQS</td><td>Managed queue</td><td>At-least-once; FIFO within message group when selected</td><td>Queue / message group</td><td>Simple managed background work</td></tr>
+          <tr><td>RabbitMQ</td><td>Brokered queues</td><td>Acks, confirms, queue-specific ordering</td><td>Queue</td><td>Flexible routing and work delivery</td></tr>
+          <tr><td>Cassandra</td><td>Wide-column partitions</td><td>Tunable consistency</td><td>Partition / token range</td><td>Always-on, write-heavy distributed data</td></tr>
+          <tr><td>MongoDB</td><td>Documents</td><td>Read and write concerns; transactions available</td><td>Collection / shard key</td><td>Aggregate-shaped flexible records</td></tr>
+          <tr><td>DynamoDB</td><td>Key-value and documents</td><td>Eventually consistent by default; strong table reads optional</td><td>Partition key</td><td>Managed access-pattern-first database</td></tr>
+          <tr><td>Elasticsearch</td><td>Inverted search index</td><td>Near-real-time search</td><td>Shard</td><td>Searchable projection of source data</td></tr>
+          <tr><td>S3</td><td>Objects by key</td><td>Strong read-after-write for object operations</td><td>Object / prefix</td><td>Durable blob storage</td></tr>
+          <tr><td>etcd</td><td>Versioned key-value</td><td>Linearizable writes through Raft</td><td>Raft cluster</td><td>Small critical coordination state</td></tr>
+          <tr><td>Temporal</td><td>Workflow event history</td><td>Durable deterministic replay</td><td>Workflow execution</td><td>Reliable long-running control flow</td></tr>
+          <tr><td>Prometheus</td><td>Labeled time series</td><td>Periodic samples</td><td>Series / scrape target</td><td>Metrics and alerting</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="rules">
+    <h2>Decision Rules</h2>
+    <div class="rules">
+      <div class="rule">Start with PostgreSQL until a measured workload or required behavior proves it is the wrong tool.</div>
+      <div class="rule">Use Redis as a cache or derived-state accelerator, not automatically as a second source of truth.</div>
+      <div class="rule">Choose Kafka when replay and independent readers matter; choose a queue when work should be claimed and completed.</div>
+      <div class="rule">Assume messages can be duplicated. Put idempotency at the side-effect boundary.</div>
+      <div class="rule">In partitioned databases, the partition key is an architecture decision, not merely a schema field.</div>
+      <div class="rule">Use Elasticsearch as a searchable projection. Keep authoritative records elsewhere.</div>
+      <div class="rule">Use etcd only for small coordination state. Consensus is valuable and expensive.</div>
+      <div class="rule">Adopt Temporal when durable timers, retries, signals, or multi-day state justify its operational and coding model.</div>
+    </div>
+  </section>
+
+  <section id="sources">
+    <h2>Official Sources</h2>
+    <ul class="sources">
+      <li><a href="https://www.postgresql.org/docs/current/">PostgreSQL documentation</a></li>
+      <li><a href="https://redis.io/docs/latest/develop/data-types/">Redis data types</a></li>
+      <li><a href="https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/">Redis persistence</a></li>
+      <li><a href="https://kafka.apache.org/documentation/">Apache Kafka documentation</a></li>
+      <li><a href="https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-queue-types.html">Amazon SQS queue types</a></li>
+      <li><a href="https://www.rabbitmq.com/docs/exchanges">RabbitMQ exchanges</a></li>
+      <li><a href="https://www.rabbitmq.com/docs/quorum-queues">RabbitMQ quorum queues</a></li>
+      <li><a href="https://cassandra.apache.org/doc/latest/cassandra/architecture/overview.html">Apache Cassandra architecture</a></li>
+      <li><a href="https://www.mongodb.com/docs/manual/replication/">MongoDB replication</a></li>
+      <li><a href="https://www.mongodb.com/docs/manual/sharding/">MongoDB sharding</a></li>
+      <li><a href="https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadConsistency.html">DynamoDB consistency</a></li>
+      <li><a href="https://www.elastic.co/guide/en/elasticsearch/reference/current/nodes-shards.html">Elasticsearch nodes and shards</a></li>
+      <li><a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html">Amazon S3 concepts</a></li>
+      <li><a href="https://etcd.io/docs/v3.6/learning/">etcd learning guide</a></li>
+      <li><a href="https://docs.temporal.io/">Temporal documentation</a></li>
+      <li><a href="https://prometheus.io/docs/introduction/overview/">Prometheus overview</a></li>
+    </ul>
+  </section>
+</main>
+
+<script>
+  const connections = {
+    'client-api': {
+      title: 'Client → API',
+      summary: 'Synchronous HTTPS request carrying a user command.',
+      role: 'Authenticate, validate, and return a bounded response.',
+      data: 'Payment intent, idempotency key, amount, currency, and authorization token.',
+      failure: 'A timeout is ambiguous. The client may retry, so the idempotency key must return the original result.',
+      fit: 'Keep the interactive request short. Move slow or retry-heavy work to queues and workflows.'
+    },
+    'api-postgres': {
+      title: 'API → PostgreSQL',
+      summary: 'A short SQL transaction commits the authoritative business change.',
+      role: 'Atomically write ledger rows, transfer state, and an outbox event.',
+      data: 'Parameterized SQL statements inside one database transaction.',
+      failure: 'Rollback leaves no partial transfer. The API returns an error or safely retries.',
+      fit: 'The transaction boundary protects money invariants before any asynchronous delivery begins.'
+    },
+    'api-redis': {
+      title: 'API ↔ Redis',
+      summary: 'Low-latency reads and writes for derived or temporary state.',
+      role: 'Read cached views, increment rate limits, and store short-lived session data.',
+      data: 'Small values addressed by explicit keys with TTL and invalidation rules.',
+      failure: 'Fall back to PostgreSQL or reject optional acceleration. Never invent authoritative state.',
+      fit: 'Redis reduces latency without becoming the ledger.'
+    },
+    'postgres-kafka': {
+      title: 'PostgreSQL → Kafka',
+      summary: 'A relay publishes committed outbox rows as durable domain events.',
+      role: 'Bridge one database transaction to asynchronous event delivery without a dual-write gap.',
+      data: 'Transfer ID, event type, account key, version, timestamp, and immutable payload.',
+      failure: 'Unpublished rows remain in the outbox and are retried. Consumers must deduplicate.',
+      fit: 'The outbox makes database commit authoritative while Kafka serves replay and fan-out.'
+    },
+    'api-sqs': {
+      title: 'API → SQS',
+      summary: 'The API enqueues discrete background work that one worker should claim.',
+      role: 'Remove email, webhook, document, or other slow work from request latency.',
+      data: 'Job type, resource ID, attempt context, and correlation ID.',
+      failure: 'Send may retry. Use a stable job identity when duplicate submission matters.',
+      fit: 'A managed queue is simpler than an event log when history and many readers are unnecessary.'
+    },
+    'temporal-api': {
+      title: 'Temporal → API activity',
+      summary: 'A durable workflow schedules a bounded service operation.',
+      role: 'Advance a multi-step payment process while recording every workflow transition.',
+      data: 'Activity input and result, retry policy, timeout, and workflow identifiers.',
+      failure: 'Temporal retries activity execution. The API operation must be idempotent.',
+      fit: 'Workflow history replaces fragile in-memory orchestration for long-running processes.'
+    },
+    'kafka-workers': {
+      title: 'Kafka → Workers',
+      summary: 'Consumer groups read retained events and commit offsets after processing.',
+      role: 'Fan one event stream into reconciliation, risk, notifications, and projections.',
+      data: 'Ordered records within a partition, commonly keyed by account or transfer.',
+      failure: 'Lag grows while workers are down. Processing resumes from committed offsets.',
+      fit: 'Replay enables projection rebuilds and independent consumers.'
+    },
+    'sqs-workers': {
+      title: 'SQS → Workers',
+      summary: 'Workers claim jobs using a visibility timeout, then acknowledge completion.',
+      role: 'Distribute independent tasks across a scalable worker pool.',
+      data: 'Job payload plus receipt handle used for delete or visibility extension.',
+      failure: 'Unacknowledged work becomes visible again. Poison jobs move to a DLQ.',
+      fit: 'At-least-once delivery requires idempotent side effects.'
+    },
+    'temporal-workers': {
+      title: 'Temporal → Workers',
+      summary: 'Workers poll a Temporal task queue for workflow and activity tasks.',
+      role: 'Execute deterministic workflow decisions and external activities.',
+      data: 'Workflow tasks, activity tasks, heartbeats, results, and failure details.',
+      failure: 'Another worker can pick up the task. History reconstructs workflow state.',
+      fit: 'The durable task queue separates execution capacity from workflow ownership.'
+    },
+    'workers-search': {
+      title: 'Workers → OpenSearch',
+      summary: 'Asynchronous consumers build a denormalized search projection.',
+      role: 'Transform committed events into documents optimized for filtering and search.',
+      data: 'Transfer documents, searchable text, status fields, timestamps, and facets.',
+      failure: 'Search becomes stale. Replay Kafka events to repair or rebuild the index.',
+      fit: 'Eventual consistency is acceptable because PostgreSQL remains authoritative.'
+    },
+    'workers-s3': {
+      title: 'Workers → S3',
+      summary: 'Workers upload generated files and retain only object metadata in PostgreSQL.',
+      role: 'Store statements, receipts, settlement reports, and exports durably.',
+      data: 'Object bytes, content type, checksum, bucket, key, and retention metadata.',
+      failure: 'Retry multipart or complete-object upload with a deterministic object key.',
+      fit: 'Object storage handles large immutable payloads more efficiently than relational rows.'
+    },
+    'prometheus-services': {
+      title: 'Prometheus → Services',
+      summary: 'Prometheus periodically scrapes service metric endpoints.',
+      role: 'Measure request latency, errors, throughput, worker lag, and saturation.',
+      data: 'Counters, gauges, and histograms with low-cardinality labels.',
+      failure: 'Monitoring has gaps, but production traffic must not depend on successful scraping.',
+      fit: 'A pull model makes target health visible and centralizes alert evaluation.'
+    }
+  };
+
+  const components = {
+    client: {
+      kind: 'Entry point',
+      title: 'Web or mobile client',
+      summary: 'Starts a user request but does not own authoritative payment state.',
+      role: 'Collect input, authenticate the user, and display the result.',
+      data: 'Payment intent, account choice, amount, currency, and idempotency key.',
+      failure: 'The user may retry after a timeout. The API must make that retry safe.',
+      fit: 'Keep business invariants on the server. Treat client state as untrusted.'
+    },
+    api: {
+      kind: 'Application service',
+      title: 'Payment API',
+      summary: 'Coordinates synchronous request handling and protects domain invariants.',
+      role: 'Validate commands, authorize access, run database transactions, and return a clear result.',
+      data: 'Commands enter; transaction results and resource representations leave.',
+      failure: 'Clients retry. Stateless replicas can replace a failed instance.',
+      fit: 'The API owns orchestration, while durable state belongs in PostgreSQL or Temporal.'
+    },
+    postgres: {
+      kind: 'Relational database',
+      title: 'PostgreSQL',
+      summary: 'Authoritative store for accounts, transfers, balances, and the transactional outbox.',
+      role: 'Commit related changes atomically and enforce constraints close to the data.',
+      data: 'Ledger entries, transfer status, account metadata, and unpublished outbox events.',
+      failure: 'New writes stop or fail over. Existing committed data must remain correct.',
+      fit: 'Money requires transactions, constraints, indexes, and auditable relational records.',
+      link: '#postgresql'
+    },
+    redis: {
+      kind: 'In-memory store',
+      title: 'Redis',
+      summary: 'Serves fast state that can be recreated from an authoritative source.',
+      role: 'Cache account views, maintain rate-limit counters, and hold short-lived session state.',
+      data: 'Derived values with explicit keys, TTLs, and invalidation rules.',
+      failure: 'Latency increases while callers fall back to PostgreSQL. Correctness should survive.',
+      fit: 'Useful for speed, but not the ledger or sole record of a completed payment.',
+      link: '#redis'
+    },
+    kafka: {
+      kind: 'Distributed event log',
+      title: 'Kafka',
+      summary: 'Retains ordered event history for multiple independent consumers.',
+      role: 'Distribute transfer events to notifications, reconciliation, risk, and analytics.',
+      data: 'Immutable domain events keyed by account or transfer when local ordering matters.',
+      failure: 'Events remain in the outbox or log; consumers catch up after recovery.',
+      fit: 'Replay and multiple readers justify a log rather than a one-consumer work queue.',
+      link: '#kafka'
+    },
+    sqs: {
+      kind: 'Managed work queue',
+      title: 'Amazon SQS',
+      summary: 'Hands discrete background jobs to one available worker.',
+      role: 'Queue document generation, email delivery, webhooks, and other claim-and-complete work.',
+      data: 'Small job descriptions containing identifiers, attempt metadata, and trace context.',
+      failure: 'Visibility timeout returns unfinished work. Repeated failures move to a DLQ.',
+      fit: 'Low-operations AWS queue when retained event history and complex routing are unnecessary.',
+      link: '#sqs'
+    },
+    workers: {
+      kind: 'Application service',
+      title: 'Worker services',
+      summary: 'Perform asynchronous work outside the user request path.',
+      role: 'Consume events or jobs, call external systems, and build derived projections.',
+      data: 'Kafka events and SQS jobs enter; side effects and projection updates leave.',
+      failure: 'Lag grows. Retries must be idempotent because delivery can happen more than once.',
+      fit: 'Separating workers protects API latency and lets background capacity scale independently.'
+    },
+    search: {
+      kind: 'Search engine',
+      title: 'OpenSearch',
+      summary: 'A query-optimized projection, never the authoritative payment record.',
+      role: 'Support text search, filtering, faceting, and operational investigation.',
+      data: 'Denormalized transfer and account documents built from committed events.',
+      failure: 'Search becomes stale or unavailable. Payments continue against PostgreSQL.',
+      fit: 'Inverted indexes answer search queries that are awkward or expensive for the OLTP store.',
+      link: '#elasticsearch'
+    },
+    temporal: {
+      kind: 'Durable workflow engine',
+      title: 'Temporal',
+      summary: 'Keeps multi-step payment control flow alive across crashes and long waits.',
+      role: 'Coordinate authorization, capture, external callbacks, timeout, compensation, and retry.',
+      data: 'Workflow event history, timers, signals, and activity results.',
+      failure: 'Workers can restart and replay history. External activities still need idempotency.',
+      fit: 'Useful when a process spans systems or time and cannot be one database transaction.',
+      link: '#temporal'
+    },
+    s3: {
+      kind: 'Object storage',
+      title: 'S3-compatible storage',
+      summary: 'Durable home for large immutable objects outside relational rows.',
+      role: 'Store statements, settlement files, receipts, exports, and audit attachments.',
+      data: 'Objects by bucket and key; PostgreSQL keeps ownership and searchable metadata.',
+      failure: 'File operations retry independently. Core payment records remain available.',
+      fit: 'Cheaper and simpler than putting large byte payloads into the primary database.',
+      link: '#s3'
+    },
+    prometheus: {
+      kind: 'Metrics system',
+      title: 'Prometheus',
+      summary: 'Observes system behavior without participating in the payment path.',
+      role: 'Track request latency, errors, worker lag, queue depth, and dependency health.',
+      data: 'Numeric time series with carefully bounded labels.',
+      failure: 'Alerts and dashboards degrade, but payment processing should continue.',
+      fit: 'Pull-based metrics and PromQL make service-level behavior measurable.',
+      link: '#prometheus'
+    }
+  };
+
+  const componentNodes = [...document.querySelectorAll('.system-node')];
+  const componentEdges = [...document.querySelectorAll('.system-edge')];
+  const connectionGroups = [...document.querySelectorAll('[data-connection]')];
+  const componentKind = document.getElementById('component-kind');
+  const componentTitle = document.getElementById('component-title');
+  const componentSummary = document.getElementById('component-summary');
+  const componentFacts = document.getElementById('component-facts');
+  const componentLink = document.getElementById('component-link');
+
+  function selectComponent(name) {
+    const component = components[name];
+    if (!component) return;
+
+    const activeEdges = componentEdges.filter((edge) => edge.dataset.edge.split(' ').includes(name));
+    const connectedNames = new Set([name]);
+    activeEdges.forEach((edge) => edge.dataset.edge.split(' ').forEach((part) => connectedNames.add(part)));
+
+    componentNodes.forEach((node) => {
+      const nodeName = node.dataset.component;
+      node.classList.toggle('is-active', nodeName === name);
+      node.classList.toggle('is-muted', !connectedNames.has(nodeName));
+      node.setAttribute('aria-pressed', String(nodeName === name));
+    });
+    connectionGroups.forEach((connection) => connection.setAttribute('aria-pressed', 'false'));
+    componentEdges.forEach((edge) => {
+      const active = activeEdges.includes(edge);
+      edge.classList.toggle('is-active', active);
+      edge.classList.toggle('is-muted', !active);
+    });
+
+    componentKind.textContent = component.kind;
+    componentTitle.textContent = component.title;
+    componentSummary.textContent = component.summary;
+    componentFacts.replaceChildren(...[
+      ['Role', component.role],
+      ['Data', component.data],
+      ['If it fails', component.failure],
+      ['Why it fits', component.fit]
+    ].map(([label, value]) => {
+      const fact = document.createElement('div');
+      const heading = document.createElement('strong');
+      const text = document.createElement('span');
+      fact.className = 'panel-fact';
+      heading.textContent = label;
+      text.textContent = value;
+      fact.append(heading, text);
+      return fact;
+    }));
+
+    componentLink.hidden = !component.link;
+    if (component.link) componentLink.href = component.link;
+  }
+
+  function selectConnection(name) {
+    const connection = connections[name];
+    const selectedGroup = connectionGroups.find((group) => group.dataset.connection === name);
+    if (!connection || !selectedGroup) return;
+
+    const selectedEdge = selectedGroup.querySelector('.system-edge');
+    const connectedNames = new Set(selectedEdge.dataset.edge.split(' '));
+    componentNodes.forEach((node) => {
+      node.classList.remove('is-active');
+      node.classList.toggle('is-muted', !connectedNames.has(node.dataset.component));
+      node.setAttribute('aria-pressed', 'false');
+    });
+    componentEdges.forEach((edge) => {
+      const active = edge === selectedEdge;
+      edge.classList.toggle('is-active', active);
+      edge.classList.toggle('is-muted', !active);
+    });
+    connectionGroups.forEach((group) => {
+      group.setAttribute('aria-pressed', String(group === selectedGroup));
+    });
+
+    componentKind.textContent = 'Data movement';
+    componentTitle.textContent = connection.title;
+    componentSummary.textContent = connection.summary;
+    componentFacts.replaceChildren(...[
+      ['Purpose', connection.role],
+      ['Payload', connection.data],
+      ['Failure behavior', connection.failure],
+      ['Design reason', connection.fit]
+    ].map(([label, value]) => {
+      const fact = document.createElement('div');
+      const heading = document.createElement('strong');
+      const text = document.createElement('span');
+      fact.className = 'panel-fact';
+      heading.textContent = label;
+      text.textContent = value;
+      fact.append(heading, text);
+      return fact;
+    }));
+    componentLink.hidden = true;
+  }
+
+  componentNodes.forEach((node) => {
+    node.addEventListener('click', () => selectComponent(node.dataset.component));
+    node.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      selectComponent(node.dataset.component);
+    });
+  });
+
+  connectionGroups.forEach((connection) => {
+    connection.addEventListener('click', () => selectConnection(connection.dataset.connection));
+    connection.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      selectConnection(connection.dataset.connection);
+    });
+  });
+
+  const choices = {
+    money: {
+      title: 'Begin with a relational source of truth',
+      tools: ['PostgreSQL'],
+      description: 'Transactions, constraints, unique indexes, and explicit isolation make invariants inspectable. Add other tools as projections or delivery mechanisms, not replacements for the ledger.'
+    },
+    cache: {
+      title: 'Use an in-memory data structure server',
+      tools: ['Redis'],
+      description: 'Redis is a strong fit for derived state with a TTL or state that can be reconstructed. Define the miss path, invalidation rule, memory limit, and failure behavior first.'
+    },
+    events: {
+      title: 'Use a retained, partitioned log',
+      tools: ['Kafka'],
+      description: 'Kafka fits when multiple consumers need the same events, replay matters, and ordering by key is useful. Partition-key choice controls both ordering and scale.'
+    },
+    jobs: {
+      title: 'Use a managed work queue',
+      tools: ['Amazon SQS', 'RabbitMQ'],
+      description: 'Start with SQS on AWS for low operations overhead. Choose RabbitMQ when exchange routing, broker-managed priorities, or richer queue topology is central.'
+    },
+    routing: {
+      title: 'Use a broker designed for routing',
+      tools: ['RabbitMQ'],
+      description: 'Exchanges and bindings can express direct, topic, fanout, and header-based routes. Publisher confirms and consumer acknowledgements define reliable handoff.'
+    },
+    global: {
+      title: 'Model around partitions first',
+      tools: ['Cassandra', 'DynamoDB'],
+      description: 'Both reward known access patterns and well-distributed partition keys. Cassandra gives operational control and tunable consistency; DynamoDB gives a managed AWS service.'
+    },
+    search: {
+      title: 'Build a searchable projection',
+      tools: ['Elasticsearch', 'OpenSearch'],
+      description: 'Index source records into a search engine for text relevance and aggregations. Expect near-real-time visibility and keep the authoritative data in another store.'
+    },
+    files: {
+      title: 'Use object storage',
+      tools: ['S3-compatible storage'],
+      description: 'Store large immutable or replaceable blobs by key. Keep searchable metadata and transactional relationships in a database.'
+    },
+    coordination: {
+      title: 'Use a consensus-backed coordination store',
+      tools: ['etcd'],
+      description: 'etcd fits small, important state that needs strong ordering, watches, leases, and leader election. It is deliberately not a general application database.'
+    },
+    workflow: {
+      title: 'Use durable execution when control flow must survive',
+      tools: ['Temporal'],
+      description: 'Temporal persists workflow history and replays deterministic code. Activities still require idempotency because external side effects can be retried.'
+    }
+  };
+
+  const optionButtons = [...document.querySelectorAll('.chooser-options button')];
+  const choiceTitle = document.getElementById('choice-title');
+  const choiceTools = document.getElementById('choice-tools');
+  const choiceDescription = document.getElementById('choice-description');
+  const toolSelect = document.getElementById('tool-select');
+  const toolCards = [...document.querySelectorAll('.tool-card[id]')];
+
+  toolSelect.addEventListener('change', () => {
+    const card = document.getElementById(toolSelect.value);
+    if (!card) return;
+
+    history.replaceState(null, '', `#${card.id}`);
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  const toolObserver = new IntersectionObserver((entries) => {
+    const visible = entries
+      .filter((entry) => entry.isIntersecting)
+      .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+
+    if (!visible) return;
+    toolCards.forEach((card) => card.classList.toggle('is-current', card === visible.target));
+    toolSelect.value = visible.target.id;
+  }, {
+    rootMargin: '-18% 0px -62% 0px',
+    threshold: [0, 0.25, 0.5]
+  });
+
+  toolCards.forEach((card) => toolObserver.observe(card));
+
+  optionButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const choice = choices[button.dataset.choice];
+
+      optionButtons.forEach((candidate) => candidate.classList.toggle('active', candidate === button));
+      choiceTitle.textContent = choice.title;
+      choiceTools.replaceChildren(...choice.tools.map((tool) => {
+        const pill = document.createElement('span');
+        pill.className = 'tool-pill';
+        pill.textContent = tool;
+        return pill;
+      }));
+      choiceDescription.textContent = choice.description;
+    });
+  });
+</script>
+
+</body>
+</html>
