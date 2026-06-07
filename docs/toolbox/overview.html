@@ -29,8 +29,6 @@
       font-size: 15px;
       line-height: 1.65;
     }
-    body.modal-open { overflow: hidden; }
-
     .site-nav {
       display: flex;
       align-items: center;
@@ -274,30 +272,16 @@
     }
     .system-node.is-muted rect,
     .system-node.is-muted text { opacity: 0.3; }
-    .component-modal {
-      align-items: center;
-      background: rgba(1, 4, 9, 0.76);
-      display: flex;
-      inset: 0;
-      justify-content: center;
-      padding: 24px;
-      position: fixed;
-      z-index: 2000;
-    }
-    .component-modal[hidden] { display: none; }
     .component-panel {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: 0 24px 80px rgb(0 0 0 / 55%);
-      max-height: min(720px, calc(100vh - 48px));
-      max-width: 620px;
-      overflow-y: auto;
-      padding: 24px;
+      border-radius: 10px;
+      margin-top: 14px;
+      padding: 20px;
       position: relative;
       width: 100%;
     }
-    .modal-close {
+    .panel-close {
       align-items: center;
       background: var(--bg);
       border: 1px solid var(--border);
@@ -305,17 +289,16 @@
       color: var(--muted);
       cursor: pointer;
       display: flex;
-      font-size: 20px;
-      height: 34px;
+      font-size: 13px;
+      height: 32px;
       justify-content: center;
-      line-height: 1;
       position: absolute;
       right: 16px;
       top: 16px;
-      width: 34px;
+      width: 64px;
     }
-    .modal-close:hover,
-    .modal-close:focus {
+    .panel-close:hover,
+    .panel-close:focus {
       border-color: var(--accent);
       color: var(--text);
       outline: none;
@@ -331,11 +314,12 @@
     .component-panel h3 {
       font-size: 1.2rem;
       margin-bottom: 14px;
-      padding-right: 42px;
+      padding-right: 76px;
     }
     .panel-facts {
       display: grid;
-      gap: 0;
+      gap: 0 24px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .panel-fact {
       border-top: 1px solid var(--border);
@@ -360,6 +344,15 @@
       color: var(--muted);
       font-size: 12px;
       margin: 10px 0 0;
+    }
+    .diagram-reading-guide {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 12px;
+      padding: 9px 12px;
     }
     .diagram-legend {
       display: flex;
@@ -609,19 +602,10 @@
       .job-map { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .tool-grid, .flow-compare, .rules { grid-template-columns: 1fr; }
       .system-canvas { padding: 8px; }
-      .component-modal {
-        align-items: flex-end;
-        padding: 0;
-      }
       .component-panel {
-        border-bottom: 0;
-        border-left: 0;
-        border-radius: 16px 16px 0 0;
-        border-right: 0;
-        max-height: 82vh;
-        max-width: none;
-        padding: 22px 20px calc(24px + env(safe-area-inset-bottom));
+        padding: 18px;
       }
+      .panel-facts { grid-template-columns: 1fr; }
       .sources { columns: 1; }
     }
 
@@ -701,6 +685,7 @@
           <span class="legend-item"><span class="legend-line workflow"></span>Workflow command</span>
           <span class="legend-item"><span class="legend-line metrics"></span>Metrics scrape</span>
         </div>
+        <div class="diagram-reading-guide" id="diagram-selection" aria-live="polite"><strong>How to read:</strong> Boxes are components. Labeled arrows are data movement. Select either one: related paths stay bright while unrelated parts dim.</div>
         <svg viewBox="0 0 980 760" role="img" aria-labelledby="system-title system-description">
           <title id="system-title">Clickable payment platform architecture</title>
           <desc id="system-description">A client reaches payment services through an API gateway. Services use PostgreSQL, Redis, Kafka, SQS, and Temporal. Transactional events reach Kafka through an outbox relay, while services may also publish directly. Consumer groups process events, failed jobs reach a dead-letter queue, and PostgreSQL replicates reads.</desc>
@@ -931,21 +916,19 @@
             <text class="node-kind" x="888" y="707">METRICS</text>
           </g>
         </svg>
-        <p class="diagram-hint">Tip: select a component or connection for details. Click outside the popup or press Escape to clear the selection.</p>
+        <p class="diagram-hint">Tip: click blank diagram space or press Escape to clear the selection.</p>
       </div>
+
+      <aside class="component-panel" id="component-panel" aria-live="polite" aria-labelledby="component-title">
+        <button class="panel-close" id="panel-close" type="button" hidden>Clear</button>
+        <div class="panel-eyebrow" id="component-kind">How to read this diagram</div>
+        <h3 id="component-title">Select a component or connection</h3>
+        <p id="component-summary">Choose a box to understand its responsibility and failure behavior. Choose a labeled arrow to inspect the payload and delivery guarantee between two components.</p>
+        <div class="panel-facts" id="component-facts"></div>
+        <a class="panel-link" id="component-link" href="#system" hidden>Read its toolbox summary</a>
+      </aside>
     </div>
   </section>
-
-  <div class="component-modal" id="component-modal" hidden>
-    <aside class="component-panel" role="dialog" aria-modal="true" aria-labelledby="component-title" aria-describedby="component-summary">
-      <button class="modal-close" id="modal-close" type="button" aria-label="Close details">×</button>
-      <div class="panel-eyebrow" id="component-kind">Architecture explorer</div>
-      <h3 id="component-title">Component details</h3>
-      <p id="component-summary"></p>
-      <div class="panel-facts" id="component-facts"></div>
-      <a class="panel-link" id="component-link" href="#system" hidden>Read its toolbox summary</a>
-    </aside>
-  </div>
 
   <section id="chooser">
     <h2>Choose by Workload</h2>
@@ -1524,16 +1507,14 @@
   const componentSummary = document.getElementById('component-summary');
   const componentFacts = document.getElementById('component-facts');
   const componentLink = document.getElementById('component-link');
-  const componentModal = document.getElementById('component-modal');
-  const modalClose = document.getElementById('modal-close');
+  const panelClose = document.getElementById('panel-close');
   const systemDiagram = document.querySelector('.system-canvas svg');
+  const diagramSelection = document.getElementById('diagram-selection');
   let activeDiagramTrigger = null;
 
-  function openComponentModal(trigger) {
+  function showComponentDetails(trigger) {
     activeDiagramTrigger = trigger;
-    componentModal.hidden = false;
-    document.body.classList.add('modal-open');
-    modalClose.focus();
+    panelClose.hidden = false;
   }
 
   function clearDiagramSelection({ restoreFocus = true } = {}) {
@@ -1543,8 +1524,13 @@
     });
     componentEdges.forEach((edge) => edge.classList.remove('is-active', 'is-muted'));
     connectionGroups.forEach((connection) => connection.setAttribute('aria-pressed', 'false'));
-    componentModal.hidden = true;
-    document.body.classList.remove('modal-open');
+    componentKind.textContent = 'How to read this diagram';
+    componentTitle.textContent = 'Select a component or connection';
+    componentSummary.textContent = 'Choose a box to understand its responsibility and failure behavior. Choose a labeled arrow to inspect the payload and delivery guarantee between two components.';
+    diagramSelection.innerHTML = '<strong>How to read:</strong> Boxes are components. Labeled arrows are data movement. Select either one: related paths stay bright while unrelated parts dim.';
+    componentFacts.replaceChildren();
+    componentLink.hidden = true;
+    panelClose.hidden = true;
 
     if (restoreFocus && activeDiagramTrigger) activeDiagramTrigger.focus();
     activeDiagramTrigger = null;
@@ -1574,6 +1560,10 @@
     componentKind.textContent = component.kind;
     componentTitle.textContent = component.title;
     componentSummary.textContent = component.summary;
+    diagramSelection.replaceChildren();
+    const componentSelectionLabel = document.createElement('strong');
+    componentSelectionLabel.textContent = `${component.title}: `;
+    diagramSelection.append(componentSelectionLabel, component.summary);
     componentFacts.replaceChildren(...[
       ['Role', component.role],
       ['Data', component.data],
@@ -1592,7 +1582,7 @@
 
     componentLink.hidden = !component.link;
     if (component.link) componentLink.href = component.link;
-    openComponentModal(componentNodes.find((node) => node.dataset.component === name));
+    showComponentDetails(componentNodes.find((node) => node.dataset.component === name));
   }
 
   function selectConnection(name) {
@@ -1619,6 +1609,10 @@
     componentKind.textContent = 'Data movement';
     componentTitle.textContent = connection.title;
     componentSummary.textContent = connection.summary;
+    diagramSelection.replaceChildren();
+    const connectionSelectionLabel = document.createElement('strong');
+    connectionSelectionLabel.textContent = `${connection.title}: `;
+    diagramSelection.append(connectionSelectionLabel, connection.summary);
     componentFacts.replaceChildren(...[
       ['Purpose', connection.role],
       ['Payload', connection.data],
@@ -1635,7 +1629,7 @@
       return fact;
     }));
     componentLink.hidden = true;
-    openComponentModal(selectedGroup);
+    showComponentDetails(selectedGroup);
   }
 
   componentNodes.forEach((node) => {
@@ -1656,31 +1650,14 @@
     });
   });
 
-  modalClose.addEventListener('click', () => clearDiagramSelection());
-  componentModal.addEventListener('click', (event) => {
-    if (event.target === componentModal) clearDiagramSelection();
-  });
-  componentModal.addEventListener('keydown', (event) => {
-    if (event.key !== 'Tab') return;
-
-    const focusable = [...componentModal.querySelectorAll('button, a:not([hidden])')];
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  });
+  panelClose.addEventListener('click', () => clearDiagramSelection());
   systemDiagram.addEventListener('click', (event) => {
     if (event.target.closest('.system-node, [data-connection]')) return;
     clearDiagramSelection({ restoreFocus: false });
   });
   componentLink.addEventListener('click', () => clearDiagramSelection({ restoreFocus: false }));
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !componentModal.hidden) clearDiagramSelection();
+    if (event.key === 'Escape' && activeDiagramTrigger) clearDiagramSelection();
   });
 
   const choices = {
