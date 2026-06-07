@@ -83,6 +83,7 @@ make logs     # Follow the relevant service logs
 Project requirements:
 
 - Do not depend on another project.
+- Run every project and lab through Docker Compose. Do not require host-installed databases, brokers, or application runtimes beyond Docker-compatible tooling and `make`.
 - Pin container image and dependency versions.
 - Include migrations and deterministic seed data where applicable.
 - Add health checks for long-running services.
@@ -91,6 +92,32 @@ Project requirements:
 - Document architecture, invariants, startup commands, and failure exercises.
 - Prefer project-local Compose files.
 - Share scripts or base configuration only after meaningful duplication appears.
+
+### Environment Lifecycle Contract
+
+Every build must support a clean, repeatable lifecycle:
+
+```bash
+make up       # Build and start from declared configuration
+make reset    # Remove state, recreate services, run migrations, and load deterministic seed data
+make down     # Stop services and remove containers, networks, volumes, and generated runtime artifacts
+```
+
+`make down` must leave no project runtime state behind:
+
+- Remove project containers and Compose networks.
+- Remove named and anonymous volumes created by the project.
+- Remove generated data directories, temporary files, and local runtime artifacts.
+- Do not delete committed source, migrations, scripts, fixtures, or documentation.
+- Document any unavoidable host-level cache that Docker or the build system owns.
+
+Never rely on manually edited database state. Schema and required data must be reproducible:
+
+- Use versioned migrations for schema changes.
+- Use committed scripts or fixtures for seed and scenario data.
+- Make migration and seed commands safe to rerun where practical.
+- Keep test data deterministic so failures can be reproduced.
+- After teardown, `make up` or `make reset` must reconstruct the expected environment without manual steps.
 
 ## Technology Choices
 
@@ -180,3 +207,41 @@ Initial entities:
 - balanced debit and credit `postings`
 
 Later concepts may add FX, an outbox, Kafka events, reconciliation, caching, and observability when those mechanisms become the learning focus.
+
+## Current State
+
+Completed documentation:
+
+- `docs/postgres/overview.html`: standalone PostgreSQL overview and request-flow visual
+- `docs/toolbox/overview.html`: systems-tool mental models, comparisons, workload selector, and clickable payment architecture
+- `docs/index.html`: topic landing page with links to current explainers
+
+The toolbox architecture distinguishes synchronous requests, Kafka streams, queue delivery, workflows, storage writes, replication/CDC, and metrics. Components and connections expose compact popovers plus detailed explanations.
+
+Repository structure now uses:
+
+```text
+projects/   Independently deployable systems
+labs/       Independently runnable mechanism experiments
+infra/      Shared infrastructure only after real reuse appears
+docs/       Durable HTML learning pages
+```
+
+## Next Session
+
+Start PostgreSQL learning by building and observing behavior, not by adding more overview prose.
+
+Initial lab or thin project slice:
+
+1. Create a Docker Compose environment containing PostgreSQL and the smallest useful application or driver.
+2. Add versioned migrations for accounts, transfers, and balanced postings.
+3. Add deterministic scripts or fixtures for scenario data.
+4. Write concurrent transfer code.
+5. Reproduce one correctness failure, such as a lost update or write skew.
+6. Observe transactions, locks, isolation behavior, and resulting rows.
+7. Fix the failure with the appropriate transaction boundary, locking, constraint, or isolation level.
+8. Provide `make up`, `make down`, `make reset`, `make test`, `make break`, and `make logs`.
+9. Verify `make down` removes containers, networks, volumes, and generated runtime artifacts.
+10. Capture commands, predictions, observations, and conclusions in the project or lab README, then teach the result back through HTML.
+
+Choose between `projects/ledger/` and a focused `labs/postgres-concurrency/` after inspecting the repository. Prefer the ledger when the experiment benefits from real money invariants; prefer a lab when isolating a PostgreSQL mechanism makes the behavior clearer.
