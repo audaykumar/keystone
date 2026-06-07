@@ -179,6 +179,7 @@
       min-width: 0;
       overflow: hidden;
       padding: 14px;
+      position: relative;
     }
     .system-canvas svg {
       display: block;
@@ -199,22 +200,42 @@
       letter-spacing: 0.08em;
     }
     .system-edge {
+      --flow-color: var(--muted);
       fill: none;
       opacity: 0.38;
-      stroke: var(--muted);
+      stroke: var(--flow-color);
       stroke-width: 2;
       transition: opacity 160ms ease, stroke 160ms ease, stroke-width 160ms ease;
     }
-    .system-edge[data-flow-type="async"] { stroke-dasharray: 8 5; }
-    .system-edge[data-flow-type="metrics"] { stroke-dasharray: 2 5; }
-    .system-edge[data-flow-type="workflow"] { stroke: var(--purple); }
-    .system-edge[data-flow-type="storage"] { stroke: var(--orange); }
+    .system-edge[data-flow-type="sync"] { --flow-color: var(--accent); }
+    .system-edge[data-flow-type="kafka"] {
+      --flow-color: var(--green);
+      stroke-dasharray: 8 5;
+    }
+    .system-edge[data-flow-type="queue"] {
+      --flow-color: #f778ba;
+      stroke-dasharray: 8 5;
+    }
+    .system-edge[data-flow-type="replication"] {
+      --flow-color: var(--muted);
+      stroke-dasharray: 6 5;
+    }
+    .system-edge[data-flow-type="metrics"] {
+      --flow-color: var(--muted);
+      stroke-dasharray: 2 5;
+    }
+    .system-edge[data-flow-type="workflow"] { --flow-color: var(--purple); }
+    .system-edge[data-flow-type="storage"] { --flow-color: var(--orange); }
     .system-edge.is-active {
       opacity: 1;
-      stroke: var(--accent);
+      stroke: var(--flow-color);
       stroke-width: 3;
     }
     .system-edge.is-muted { opacity: 0.08; }
+    [data-connection].is-muted .edge-label,
+    [data-connection].is-muted .edge-label-bg {
+      opacity: 0.12;
+    }
     .edge-hit {
       cursor: pointer;
       fill: none;
@@ -258,6 +279,13 @@
       letter-spacing: 0.06em;
       text-transform: uppercase;
     }
+    .system-node .node-copy {
+      text-anchor: start;
+    }
+    .system-node .node-icon-label {
+      font-size: 8px;
+      text-anchor: middle;
+    }
     .system-node image {
       pointer-events: none;
     }
@@ -271,7 +299,56 @@
       stroke-width: 3;
     }
     .system-node.is-muted rect,
-    .system-node.is-muted text { opacity: 0.3; }
+    .system-node.is-muted text,
+    .system-node.is-muted image,
+    .system-node.is-muted circle,
+    .system-node.is-muted > path { opacity: 0.22; }
+    .diagram-popover {
+      background: #1c222b;
+      border: 1px solid var(--accent);
+      border-radius: 9px;
+      box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
+      max-width: 260px;
+      padding: 12px 34px 12px 13px;
+      position: absolute;
+      width: max-content;
+      z-index: 20;
+    }
+    .diagram-popover[hidden] { display: none; }
+    .diagram-popover strong {
+      color: var(--text);
+      display: block;
+      font-size: 13px;
+      line-height: 1.3;
+      margin-bottom: 5px;
+    }
+    .diagram-popover p {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+      margin: 0 0 8px;
+    }
+    .popover-details {
+      font-size: 11px;
+      font-weight: 650;
+    }
+    .popover-close {
+      background: transparent;
+      border: 0;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      padding: 4px;
+      position: absolute;
+      right: 6px;
+      top: 5px;
+    }
+    .popover-close:hover,
+    .popover-close:focus {
+      color: var(--text);
+      outline: none;
+    }
     .component-panel {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -279,6 +356,7 @@
       margin-top: 14px;
       padding: 20px;
       position: relative;
+      scroll-margin-top: 112px;
       width: 100%;
     }
     .panel-close {
@@ -375,6 +453,11 @@
     .legend-line.async { border-top-style: dashed; }
     .legend-line.metrics { border-top-style: dotted; }
     .legend-line.workflow { border-color: var(--purple); }
+    .legend-line.sync { border-color: var(--accent); }
+    .legend-line.kafka { border-color: var(--green); border-top-style: dashed; }
+    .legend-line.queue { border-color: #f778ba; border-top-style: dashed; }
+    .legend-line.replication { border-top-style: dashed; }
+    .legend-line.storage { border-color: var(--orange); }
 
     .chooser {
       background: var(--surface);
@@ -605,6 +688,9 @@
       .component-panel {
         padding: 18px;
       }
+      .diagram-popover {
+        max-width: 220px;
+      }
       .panel-facts { grid-template-columns: 1fr; }
       .sources { columns: 1; }
     }
@@ -680,9 +766,12 @@
     <div class="system-explorer">
       <div class="system-canvas">
         <div class="diagram-legend" aria-label="Connection legend">
-          <span class="legend-item"><span class="legend-line"></span>Synchronous request</span>
-          <span class="legend-item"><span class="legend-line async"></span>Asynchronous delivery</span>
+          <span class="legend-item"><span class="legend-line sync"></span>Synchronous request</span>
+          <span class="legend-item"><span class="legend-line kafka"></span>Kafka event stream</span>
+          <span class="legend-item"><span class="legend-line queue"></span>Queue delivery</span>
           <span class="legend-item"><span class="legend-line workflow"></span>Workflow command</span>
+          <span class="legend-item"><span class="legend-line storage"></span>Storage write</span>
+          <span class="legend-item"><span class="legend-line replication"></span>Replication / CDC</span>
           <span class="legend-item"><span class="legend-line metrics"></span>Metrics scrape</span>
         </div>
         <div class="diagram-reading-guide" id="diagram-selection" aria-live="polite"><strong>How to read:</strong> Boxes are components. Labeled arrows are data movement. Select either one: related paths stay bright while unrelated parts dim.</div>
@@ -727,29 +816,29 @@
             <text class="edge-label" x="388" y="191">GET / SET</text>
           </g>
           <g data-connection="postgres-relay" role="button" tabindex="0" aria-label="Outbox relay reads committed PostgreSQL events">
-            <path class="system-edge" data-edge="postgres relay" data-flow-type="async" d="M625 154 V174" marker-end="url(#arrowhead)"></path>
+            <path class="system-edge" data-edge="postgres relay" data-flow-type="replication" d="M625 154 V174" marker-end="url(#arrowhead)"></path>
             <path class="edge-hit" d="M625 154 V174"></path>
           </g>
           <g data-connection="relay-kafka" role="button" tabindex="0" aria-label="Outbox relay publishes events to Kafka">
-            <path class="system-edge" data-edge="relay kafka" data-flow-type="async" d="M625 222 V248" marker-end="url(#arrowhead)"></path>
+            <path class="system-edge" data-edge="relay kafka" data-flow-type="kafka" d="M625 222 V248" marker-end="url(#arrowhead)"></path>
             <path class="edge-hit" d="M625 222 V248"></path>
             <rect class="edge-label-bg" x="635" y="228" width="92" height="16" rx="4"></rect>
             <text class="edge-label" x="681" y="239">PUBLISH EVENT</text>
           </g>
           <g data-connection="api-kafka" role="button" tabindex="0" aria-label="Payment API publishes directly to Kafka">
-            <path class="system-edge" data-edge="api kafka" data-flow-type="async" d="M420 132 C480 160 520 270 545 286" marker-end="url(#arrowhead)"></path>
+            <path class="system-edge" data-edge="api kafka" data-flow-type="kafka" d="M420 132 C480 160 520 270 545 286" marker-end="url(#arrowhead)"></path>
             <path class="edge-hit" d="M420 132 C480 160 520 270 545 286"></path>
             <rect class="edge-label-bg" x="451" y="198" width="102" height="16" rx="4"></rect>
             <text class="edge-label" x="502" y="209">DIRECT PRODUCE</text>
           </g>
           <g data-connection="postgres-replica" role="button" tabindex="0" aria-label="PostgreSQL primary streams changes to read replica">
-            <path class="system-edge" data-edge="postgres replica" data-flow-type="async" d="M705 116 H780" marker-end="url(#arrowhead)"></path>
+            <path class="system-edge" data-edge="postgres replica" data-flow-type="replication" d="M705 116 H780" marker-end="url(#arrowhead)"></path>
             <path class="edge-hit" d="M705 116 H780"></path>
             <rect class="edge-label-bg" x="714" y="96" width="58" height="16" rx="4"></rect>
             <text class="edge-label" x="743" y="107">WAL</text>
           </g>
           <g data-connection="api-sqs" role="button" tabindex="0" aria-label="API sends background job to SQS">
-            <path class="system-edge" data-edge="api sqs" data-flow-type="async" d="M420 146 C560 205 720 260 780 300" marker-end="url(#arrowhead)"></path>
+            <path class="system-edge" data-edge="api sqs" data-flow-type="queue" d="M420 146 C560 205 720 260 780 300" marker-end="url(#arrowhead)"></path>
             <path class="edge-hit" d="M420 146 C560 205 720 260 780 300"></path>
             <rect class="edge-label-bg" x="655" y="242" width="78" height="16" rx="4"></rect>
             <text class="edge-label" x="694" y="253">SEND JOB</text>
@@ -767,23 +856,23 @@
             <text class="edge-label" x="299" y="246">ACTIVITY CALL</text>
           </g>
           <g data-connection="kafka-consumers" role="button" tabindex="0" aria-label="Kafka partitions are read by consumer groups">
-            <path class="system-edge" data-edge="kafka consumers" data-flow-type="async" d="M625 324 V492" marker-end="url(#arrowhead)"></path>
+            <path class="system-edge" data-edge="kafka consumers" data-flow-type="kafka" d="M625 324 V492" marker-end="url(#arrowhead)"></path>
             <path class="edge-hit" d="M625 324 V492"></path>
             <rect class="edge-label-bg" x="635" y="402" width="104" height="16" rx="4"></rect>
             <text class="edge-label" x="687" y="413">POLL + OFFSET</text>
           </g>
           <g data-connection="consumers-workers" role="button" tabindex="0" aria-label="Consumer groups dispatch records to worker services">
-            <path class="system-edge" data-edge="consumers workers" data-flow-type="async" d="M555 528 H455" marker-end="url(#arrowhead)"></path>
+            <path class="system-edge" data-edge="consumers workers" data-flow-type="kafka" d="M555 528 H455" marker-end="url(#arrowhead)"></path>
             <path class="edge-hit" d="M555 528 H455"></path>
           </g>
           <g data-connection="sqs-workers" role="button" tabindex="0" aria-label="Workers receive and acknowledge SQS jobs">
-            <path class="system-edge" data-edge="sqs workers" data-flow-type="async" d="M820 348 C760 470 580 500 455 548" marker-end="url(#arrowhead)"></path>
+            <path class="system-edge" data-edge="sqs workers" data-flow-type="queue" d="M820 348 C760 470 580 500 455 548" marker-end="url(#arrowhead)"></path>
             <path class="edge-hit" d="M820 348 C760 470 580 500 455 548"></path>
             <rect class="edge-label-bg" x="720" y="448" width="92" height="16" rx="4"></rect>
             <text class="edge-label" x="766" y="459">RECEIVE + ACK</text>
           </g>
           <g data-connection="sqs-dlq" role="button" tabindex="0" aria-label="SQS redrives repeatedly failing jobs to dead-letter queue">
-            <path class="system-edge" data-edge="sqs dlq" data-flow-type="async" d="M860 348 V492" marker-end="url(#arrowhead)"></path>
+            <path class="system-edge" data-edge="sqs dlq" data-flow-type="queue" d="M860 348 V492" marker-end="url(#arrowhead)"></path>
             <path class="edge-hit" d="M860 348 V492"></path>
             <rect class="edge-label-bg" x="870" y="412" width="68" height="16" rx="4"></rect>
             <text class="edge-label" x="904" y="423">REDRIVE</text>
@@ -795,7 +884,7 @@
             <text class="edge-label" x="376" y="461">TASK QUEUE</text>
           </g>
           <g data-connection="workers-search" role="button" tabindex="0" aria-label="Workers index documents into OpenSearch">
-            <path class="system-edge" data-edge="workers search" data-flow-type="async" d="M455 566 H585" marker-end="url(#arrowhead)"></path>
+            <path class="system-edge" data-edge="workers search" data-flow-type="kafka" d="M455 566 H585" marker-end="url(#arrowhead)"></path>
             <path class="edge-hit" d="M455 566 H585"></path>
             <rect class="edge-label-bg" x="480" y="546" width="80" height="16" rx="4"></rect>
             <text class="edge-label" x="520" y="557">INDEX DOC</text>
@@ -821,28 +910,28 @@
           </g>
           <g class="system-node" data-component="gateway" role="button" tabindex="0" aria-label="API gateway">
             <rect x="158" y="86" width="60" height="60" rx="9"></rect>
-            <text x="188" y="111">API</text>
-            <text x="188" y="126">Gateway</text>
-            <text class="node-kind" x="188" y="140">ROUTING</text>
+            <text x="188" y="108">API</text>
+            <text x="188" y="122">Gateway</text>
+            <text class="node-kind" x="188" y="137">ROUTING</text>
           </g>
           <g class="system-node" data-component="api" role="button" tabindex="0" aria-label="API service">
             <rect x="260" y="78" width="160" height="76" rx="9"></rect>
-            <text x="340" y="108">Payment API</text>
-            <text class="node-kind" x="340" y="128">PYTHON SERVICE</text>
             <circle cx="282" cy="116" r="12" fill="#3776ab"></circle>
-            <text x="282" y="120" font-size="9">Py</text>
+            <text class="node-icon-label" x="282" y="119">Py</text>
+            <text class="node-copy" x="304" y="108">Payment API</text>
+            <text class="node-kind node-copy" x="304" y="128">PYTHON SERVICE</text>
           </g>
           <g class="system-node" data-component="postgres" role="button" tabindex="0" aria-label="PostgreSQL">
             <rect x="545" y="78" width="160" height="76" rx="9"></rect>
             <image href="assets/logos/postgresql.svg" x="560" y="94" width="28" height="28"></image>
-            <text x="635" y="108">PostgreSQL</text>
-            <text class="node-kind" x="635" y="128">PRIMARY / WRITES</text>
+            <text class="node-copy" x="600" y="108">PostgreSQL</text>
+            <text class="node-kind node-copy" x="600" y="128">PRIMARY / WRITES</text>
           </g>
           <g class="system-node" data-component="replica" role="button" tabindex="0" aria-label="PostgreSQL read replica">
             <rect x="780" y="78" width="150" height="76" rx="9"></rect>
             <image href="assets/logos/postgresql.svg" x="795" y="94" width="28" height="28"></image>
-            <text x="865" y="108">Read Replica</text>
-            <text class="node-kind" x="865" y="128">READS / FAILOVER</text>
+            <text class="node-copy" x="835" y="108">Read Replica</text>
+            <text class="node-kind node-copy" x="835" y="128">READS / FAILOVER</text>
           </g>
           <g class="system-node" data-component="relay" role="button" tabindex="0" aria-label="Outbox relay or CDC connector">
             <rect x="565" y="174" width="120" height="48" rx="9"></rect>
@@ -852,27 +941,27 @@
           <g class="system-node" data-component="temporal" role="button" tabindex="0" aria-label="Temporal">
             <rect x="260" y="326" width="160" height="76" rx="9"></rect>
             <image href="assets/logos/temporal.svg" x="275" y="342" width="28" height="28"></image>
-            <text x="350" y="356">Temporal</text>
-            <text class="node-kind" x="350" y="376">DURABLE WORKFLOW</text>
+            <text class="node-copy" x="315" y="356">Temporal</text>
+            <text class="node-kind node-copy" x="315" y="376">DURABLE WORKFLOW</text>
           </g>
           <g class="system-node" data-component="redis" role="button" tabindex="0" aria-label="Redis">
             <rect x="260" y="224" width="160" height="76" rx="9"></rect>
             <image href="assets/logos/redis.svg" x="275" y="240" width="28" height="28"></image>
-            <text x="350" y="254">Redis</text>
-            <text class="node-kind" x="350" y="274">CACHE + LIMITS</text>
+            <text class="node-copy" x="315" y="254">Redis</text>
+            <text class="node-kind node-copy" x="315" y="274">CACHE + LIMITS</text>
           </g>
           <g class="system-node" data-component="kafka" role="button" tabindex="0" aria-label="Kafka">
             <rect x="545" y="248" width="160" height="76" rx="9"></rect>
             <image href="assets/logos/kafka.svg" x="560" y="264" width="28" height="28"></image>
-            <text x="635" y="278">Kafka</text>
-            <text class="node-kind" x="635" y="298">PARTITIONED LOG</text>
+            <text class="node-copy" x="600" y="278">Kafka</text>
+            <text class="node-kind node-copy" x="600" y="298">PARTITIONED LOG</text>
           </g>
           <g class="system-node" data-component="sqs" role="button" tabindex="0" aria-label="Amazon SQS">
             <rect x="780" y="272" width="150" height="76" rx="9"></rect>
             <circle cx="807" cy="310" r="14" fill="#FF4F8B"></circle>
-            <text x="807" y="313" font-size="7">SQS</text>
-            <text x="865" y="302">Amazon SQS</text>
-            <text class="node-kind" x="865" y="322">WORK QUEUE</text>
+            <text class="node-icon-label" x="807" y="313">SQS</text>
+            <text class="node-copy" x="833" y="302">Amazon SQS</text>
+            <text class="node-kind node-copy" x="833" y="322">WORK QUEUE</text>
           </g>
           <g class="system-node" data-component="provider" role="button" tabindex="0" aria-label="External payment provider">
             <rect x="35" y="248" width="150" height="76" rx="9"></rect>
@@ -891,31 +980,38 @@
           </g>
           <g class="system-node" data-component="workers" role="button" tabindex="0" aria-label="Worker services">
             <rect x="295" y="510" width="160" height="94" rx="9"></rect>
-            <text x="375" y="544">Worker Services</text>
-            <text class="node-kind" x="375" y="565">IDEMPOTENT CONSUMERS</text>
             <circle cx="318" cy="557" r="12" fill="#00add8"></circle>
-            <text x="318" y="561" font-size="8">Go</text>
+            <text class="node-icon-label" x="318" y="560">Go</text>
+            <text class="node-copy" x="340" y="548">Worker Services</text>
+            <text class="node-kind node-copy" x="340" y="570">IDEMPOTENT</text>
+            <text class="node-kind node-copy" x="340" y="583">CONSUMERS</text>
           </g>
           <g class="system-node" data-component="search" role="button" tabindex="0" aria-label="OpenSearch">
             <rect x="585" y="600" width="160" height="76" rx="9"></rect>
             <image href="assets/logos/opensearch.svg" x="600" y="616" width="28" height="28"></image>
-            <text x="675" y="630">OpenSearch</text>
-            <text class="node-kind" x="675" y="650">SEARCH PROJECTION</text>
+            <text class="node-copy" x="640" y="630">OpenSearch</text>
+            <text class="node-kind node-copy" x="640" y="650">SEARCH PROJECTION</text>
           </g>
           <g class="system-node" data-component="s3" role="button" tabindex="0" aria-label="S3 object storage">
             <rect x="300" y="664" width="150" height="58" rx="9"></rect>
             <circle cx="328" cy="693" r="13" fill="#569A31"></circle>
-            <text x="328" y="696" font-size="8">S3</text>
-            <text x="390" y="689">Amazon S3</text>
-            <text class="node-kind" x="390" y="707">FILES + EXPORTS</text>
+            <text class="node-icon-label" x="328" y="696">S3</text>
+            <text class="node-copy" x="352" y="687">Amazon S3</text>
+            <text class="node-kind node-copy" x="352" y="705">FILES + EXPORTS</text>
           </g>
           <g class="system-node" data-component="prometheus" role="button" tabindex="0" aria-label="Prometheus">
             <rect x="805" y="664" width="145" height="58" rx="9"></rect>
             <image href="assets/logos/prometheus.svg" x="818" y="679" width="26" height="26"></image>
-            <text x="888" y="689">Prometheus</text>
-            <text class="node-kind" x="888" y="707">METRICS</text>
+            <text class="node-copy" x="854" y="687">Prometheus</text>
+            <text class="node-kind node-copy" x="854" y="705">METRICS</text>
           </g>
         </svg>
+        <div class="diagram-popover" id="diagram-popover" hidden>
+          <button class="popover-close" id="popover-close" type="button" aria-label="Close quick details">×</button>
+          <strong id="popover-title"></strong>
+          <p id="popover-summary"></p>
+          <a class="popover-details" href="#component-panel">Full details ↓</a>
+        </div>
         <p class="diagram-hint">Tip: click blank diagram space or press Escape to clear the selection.</p>
       </div>
 
@@ -1509,12 +1605,67 @@
   const componentLink = document.getElementById('component-link');
   const panelClose = document.getElementById('panel-close');
   const systemDiagram = document.querySelector('.system-canvas svg');
+  const systemCanvas = document.querySelector('.system-canvas');
   const diagramSelection = document.getElementById('diagram-selection');
+  const diagramPopover = document.getElementById('diagram-popover');
+  const popoverTitle = document.getElementById('popover-title');
+  const popoverSummary = document.getElementById('popover-summary');
+  const popoverClose = document.getElementById('popover-close');
   let activeDiagramTrigger = null;
 
-  function showComponentDetails(trigger) {
+  function positionDiagramPopover(trigger) {
+    const target = trigger.matches('[data-connection]')
+      ? trigger.querySelector('.edge-label-bg, .edge-hit')
+      : trigger;
+    const canvasRect = systemCanvas.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const gap = 10;
+    const inset = 8;
+
+    diagramPopover.hidden = false;
+    diagramPopover.style.visibility = 'hidden';
+    const popoverRect = diagramPopover.getBoundingClientRect();
+    const relativeTarget = {
+      left: targetRect.left - canvasRect.left,
+      right: targetRect.right - canvasRect.left,
+      top: targetRect.top - canvasRect.top,
+      bottom: targetRect.bottom - canvasRect.top
+    };
+    const centeredLeft = (relativeTarget.left + relativeTarget.right - popoverRect.width) / 2;
+    const centeredTop = (relativeTarget.top + relativeTarget.bottom - popoverRect.height) / 2;
+    const candidates = [
+      { left: relativeTarget.right + gap, top: centeredTop },
+      { left: relativeTarget.left - popoverRect.width - gap, top: centeredTop },
+      { left: centeredLeft, top: relativeTarget.bottom + gap },
+      { left: centeredLeft, top: relativeTarget.top - popoverRect.height - gap }
+    ];
+    const fits = ({ left, top }) => (
+      left >= inset &&
+      top >= inset &&
+      left + popoverRect.width <= canvasRect.width - inset &&
+      top + popoverRect.height <= canvasRect.height - inset
+    );
+    const chosen = candidates.find(fits) || {
+      left: Math.min(Math.max(inset, candidates[0].left), canvasRect.width - popoverRect.width - inset),
+      top: Math.min(Math.max(inset, candidates[0].top), canvasRect.height - popoverRect.height - inset)
+    };
+
+    diagramPopover.style.left = `${chosen.left}px`;
+    diagramPopover.style.top = `${chosen.top}px`;
+    diagramPopover.style.visibility = 'visible';
+  }
+
+  function showComponentDetails(trigger, title, summary) {
     activeDiagramTrigger = trigger;
     panelClose.hidden = false;
+    popoverTitle.textContent = title;
+    popoverSummary.textContent = summary;
+    positionDiagramPopover(trigger);
+  }
+
+  function hideQuickDetails() {
+    diagramPopover.hidden = true;
+    if (activeDiagramTrigger) activeDiagramTrigger.focus();
   }
 
   function clearDiagramSelection({ restoreFocus = true } = {}) {
@@ -1523,7 +1674,10 @@
       node.setAttribute('aria-pressed', 'false');
     });
     componentEdges.forEach((edge) => edge.classList.remove('is-active', 'is-muted'));
-    connectionGroups.forEach((connection) => connection.setAttribute('aria-pressed', 'false'));
+    connectionGroups.forEach((connection) => {
+      connection.classList.remove('is-muted');
+      connection.setAttribute('aria-pressed', 'false');
+    });
     componentKind.textContent = 'How to read this diagram';
     componentTitle.textContent = 'Select a component or connection';
     componentSummary.textContent = 'Choose a box to understand its responsibility and failure behavior. Choose a labeled arrow to inspect the payload and delivery guarantee between two components.';
@@ -1531,6 +1685,7 @@
     componentFacts.replaceChildren();
     componentLink.hidden = true;
     panelClose.hidden = true;
+    diagramPopover.hidden = true;
 
     if (restoreFocus && activeDiagramTrigger) activeDiagramTrigger.focus();
     activeDiagramTrigger = null;
@@ -1550,7 +1705,11 @@
       node.classList.toggle('is-muted', !connectedNames.has(nodeName));
       node.setAttribute('aria-pressed', String(nodeName === name));
     });
-    connectionGroups.forEach((connection) => connection.setAttribute('aria-pressed', 'false'));
+    connectionGroups.forEach((connection) => {
+      const edge = connection.querySelector('.system-edge');
+      connection.classList.toggle('is-muted', !activeEdges.includes(edge));
+      connection.setAttribute('aria-pressed', 'false');
+    });
     componentEdges.forEach((edge) => {
       const active = activeEdges.includes(edge);
       edge.classList.toggle('is-active', active);
@@ -1582,7 +1741,11 @@
 
     componentLink.hidden = !component.link;
     if (component.link) componentLink.href = component.link;
-    showComponentDetails(componentNodes.find((node) => node.dataset.component === name));
+    showComponentDetails(
+      componentNodes.find((node) => node.dataset.component === name),
+      component.title,
+      component.summary
+    );
   }
 
   function selectConnection(name) {
@@ -1603,6 +1766,7 @@
       edge.classList.toggle('is-muted', !active);
     });
     connectionGroups.forEach((group) => {
+      group.classList.toggle('is-muted', group !== selectedGroup);
       group.setAttribute('aria-pressed', String(group === selectedGroup));
     });
 
@@ -1629,7 +1793,7 @@
       return fact;
     }));
     componentLink.hidden = true;
-    showComponentDetails(selectedGroup);
+    showComponentDetails(selectedGroup, connection.title, connection.summary);
   }
 
   componentNodes.forEach((node) => {
@@ -1651,6 +1815,15 @@
   });
 
   panelClose.addEventListener('click', () => clearDiagramSelection());
+  popoverClose.addEventListener('click', (event) => {
+    event.stopPropagation();
+    hideQuickDetails();
+  });
+  diagramPopover.querySelector('.popover-details').addEventListener('click', (event) => {
+    event.preventDefault();
+    history.replaceState(null, '', '#component-panel');
+    document.getElementById('component-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
   systemDiagram.addEventListener('click', (event) => {
     if (event.target.closest('.system-node, [data-connection]')) return;
     clearDiagramSelection({ restoreFocus: false });
@@ -1658,6 +1831,14 @@
   componentLink.addEventListener('click', () => clearDiagramSelection({ restoreFocus: false }));
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && activeDiagramTrigger) clearDiagramSelection();
+  });
+  document.addEventListener('click', (event) => {
+    if (!activeDiagramTrigger) return;
+    if (event.target.closest('.system-canvas, #component-panel')) return;
+    clearDiagramSelection({ restoreFocus: false });
+  });
+  window.addEventListener('resize', () => {
+    if (activeDiagramTrigger) positionDiagramPopover(activeDiagramTrigger);
   });
 
   const choices = {
