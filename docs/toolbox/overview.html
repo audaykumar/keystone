@@ -29,6 +29,7 @@
       font-size: 15px;
       line-height: 1.65;
     }
+    body.modal-open { overflow: hidden; }
 
     .site-nav {
       display: flex;
@@ -169,24 +170,22 @@
     }
 
     .system-explorer {
-      display: grid;
-      gap: 16px;
-      grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.75fr);
+      display: block;
     }
-    .system-canvas,
-    .component-panel {
+    .system-canvas {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 10px;
     }
     .system-canvas {
       min-width: 0;
-      overflow-x: auto;
+      overflow: hidden;
       padding: 14px;
     }
     .system-canvas svg {
       display: block;
-      min-width: 920px;
+      height: auto;
+      min-width: 0;
       width: 100%;
     }
     .system-zone {
@@ -275,12 +274,51 @@
     }
     .system-node.is-muted rect,
     .system-node.is-muted text { opacity: 0.3; }
+    .component-modal {
+      align-items: center;
+      background: rgba(1, 4, 9, 0.76);
+      display: flex;
+      inset: 0;
+      justify-content: center;
+      padding: 24px;
+      position: fixed;
+      z-index: 2000;
+    }
+    .component-modal[hidden] { display: none; }
     .component-panel {
-      align-self: start;
-      min-height: 372px;
-      padding: 20px;
-      position: sticky;
-      top: 104px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 24px 80px rgb(0 0 0 / 55%);
+      max-height: min(720px, calc(100vh - 48px));
+      max-width: 620px;
+      overflow-y: auto;
+      padding: 24px;
+      position: relative;
+      width: 100%;
+    }
+    .modal-close {
+      align-items: center;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      font-size: 20px;
+      height: 34px;
+      justify-content: center;
+      line-height: 1;
+      position: absolute;
+      right: 16px;
+      top: 16px;
+      width: 34px;
+    }
+    .modal-close:hover,
+    .modal-close:focus {
+      border-color: var(--accent);
+      color: var(--text);
+      outline: none;
     }
     .component-panel .panel-eyebrow {
       color: var(--muted);
@@ -293,6 +331,7 @@
     .component-panel h3 {
       font-size: 1.2rem;
       margin-bottom: 14px;
+      padding-right: 42px;
     }
     .panel-facts {
       display: grid;
@@ -568,8 +607,21 @@
     @media (max-width: 800px) {
       main { padding: 38px 20px 64px; }
       .job-map { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .tool-grid, .flow-compare, .rules, .system-explorer { grid-template-columns: 1fr; }
-      .component-panel { min-height: 0; position: static; }
+      .tool-grid, .flow-compare, .rules { grid-template-columns: 1fr; }
+      .system-canvas { padding: 8px; }
+      .component-modal {
+        align-items: flex-end;
+        padding: 0;
+      }
+      .component-panel {
+        border-bottom: 0;
+        border-left: 0;
+        border-radius: 16px 16px 0 0;
+        border-right: 0;
+        max-height: 82vh;
+        max-width: none;
+        padding: 22px 20px calc(24px + env(safe-area-inset-bottom));
+      }
       .sources { columns: 1; }
     }
 
@@ -649,180 +701,251 @@
           <span class="legend-item"><span class="legend-line workflow"></span>Workflow command</span>
           <span class="legend-item"><span class="legend-line metrics"></span>Metrics scrape</span>
         </div>
-        <svg viewBox="0 0 980 640" role="img" aria-labelledby="system-title system-description">
+        <svg viewBox="0 0 980 760" role="img" aria-labelledby="system-title system-description">
           <title id="system-title">Clickable payment platform architecture</title>
-          <desc id="system-description">A client calls an API backed by PostgreSQL and Redis. PostgreSQL publishes events through Kafka. Workers consume jobs and write to search and object storage. Temporal coordinates long-running payment flows. Prometheus observes services.</desc>
+          <desc id="system-description">A client reaches payment services through an API gateway. Services use PostgreSQL, Redis, Kafka, SQS, and Temporal. Transactional events reach Kafka through an outbox relay, while services may also publish directly. Consumer groups process events, failed jobs reach a dead-letter queue, and PostgreSQL replicates reads.</desc>
           <defs>
             <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
               <path d="M0,0 L8,4 L0,8 Z" fill="context-stroke"></path>
             </marker>
           </defs>
 
-          <rect class="system-zone" x="18" y="28" width="150" height="180" rx="12"></rect>
+          <rect class="system-zone" x="18" y="28" width="205" height="300" rx="12"></rect>
           <text class="zone-label" x="34" y="50">CLIENT EDGE</text>
-          <rect class="system-zone" x="185" y="28" width="310" height="310" rx="12"></rect>
-          <text class="zone-label" x="201" y="50">APPLICATION SERVICES</text>
-          <rect class="system-zone" x="512" y="28" width="450" height="310" rx="12"></rect>
-          <text class="zone-label" x="528" y="50">TRANSACTIONAL AND DELIVERY LAYER</text>
-          <rect class="system-zone" x="185" y="358" width="777" height="260" rx="12"></rect>
-          <text class="zone-label" x="201" y="380">ASYNC PROCESSING AND DERIVED DATA</text>
+          <rect class="system-zone" x="240" y="28" width="265" height="420" rx="12"></rect>
+          <text class="zone-label" x="256" y="50">APPLICATION SERVICES</text>
+          <rect class="system-zone" x="522" y="28" width="440" height="420" rx="12"></rect>
+          <text class="zone-label" x="538" y="50">TRANSACTIONAL AND DELIVERY LAYER</text>
+          <rect class="system-zone" x="18" y="468" width="944" height="272" rx="12"></rect>
+          <text class="zone-label" x="34" y="490">ASYNC PROCESSING AND DERIVED DATA</text>
 
-          <g data-connection="client-api" role="button" tabindex="0" aria-label="Client to API HTTPS request">
-            <path class="system-edge" data-edge="client api" data-flow-type="sync" d="M156 116 H230" marker-end="url(#arrowhead)"></path>
-            <path class="edge-hit" d="M156 116 H230"></path>
-            <rect class="edge-label-bg" x="168" y="96" width="52" height="16" rx="4"></rect>
-            <text class="edge-label" x="194" y="107">HTTPS</text>
+          <g data-connection="client-gateway" role="button" tabindex="0" aria-label="Client to API gateway HTTPS request">
+            <path class="system-edge" data-edge="client gateway" data-flow-type="sync" d="M146 116 H158" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M146 116 H158"></path>
+          </g>
+          <g data-connection="gateway-api" role="button" tabindex="0" aria-label="API gateway routes request to payment API">
+            <path class="system-edge" data-edge="gateway api" data-flow-type="sync" d="M218 116 H260" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M218 116 H260"></path>
+            <rect class="edge-label-bg" x="216" y="96" width="52" height="16" rx="4"></rect>
+            <text class="edge-label" x="242" y="107">HTTPS</text>
           </g>
           <g data-connection="api-postgres" role="button" tabindex="0" aria-label="API to PostgreSQL SQL transaction">
-            <path class="system-edge" data-edge="api postgres" data-flow-type="sync" d="M390 116 H555" marker-end="url(#arrowhead)"></path>
-            <path class="edge-hit" d="M390 116 H555"></path>
-            <rect class="edge-label-bg" x="432" y="96" width="78" height="16" rx="4"></rect>
-            <text class="edge-label" x="471" y="107">SQL + TXN</text>
+            <path class="system-edge" data-edge="api postgres" data-flow-type="sync" d="M420 116 H545" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M420 116 H545"></path>
+            <rect class="edge-label-bg" x="444" y="96" width="78" height="16" rx="4"></rect>
+            <text class="edge-label" x="483" y="107">SQL + TXN</text>
           </g>
           <g data-connection="api-redis" role="button" tabindex="0" aria-label="API to Redis cache operation">
-            <path class="system-edge" data-edge="api redis" data-flow-type="sync" d="M310 154 V224" marker-end="url(#arrowhead)"></path>
-            <path class="edge-hit" d="M310 154 V224"></path>
-            <rect class="edge-label-bg" x="318" y="180" width="80" height="16" rx="4"></rect>
-            <text class="edge-label" x="358" y="191">GET / SET</text>
+            <path class="system-edge" data-edge="api redis" data-flow-type="sync" d="M340 154 V224" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M340 154 V224"></path>
+            <rect class="edge-label-bg" x="348" y="180" width="80" height="16" rx="4"></rect>
+            <text class="edge-label" x="388" y="191">GET / SET</text>
           </g>
-          <g data-connection="postgres-kafka" role="button" tabindex="0" aria-label="PostgreSQL outbox to Kafka event">
-            <path class="system-edge" data-edge="postgres kafka" data-flow-type="async" d="M635 154 V224" marker-end="url(#arrowhead)"></path>
-            <path class="edge-hit" d="M635 154 V224"></path>
-            <rect class="edge-label-bg" x="645" y="180" width="92" height="16" rx="4"></rect>
-            <text class="edge-label" x="691" y="191">OUTBOX EVENT</text>
+          <g data-connection="postgres-relay" role="button" tabindex="0" aria-label="Outbox relay reads committed PostgreSQL events">
+            <path class="system-edge" data-edge="postgres relay" data-flow-type="async" d="M625 154 V174" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M625 154 V174"></path>
+          </g>
+          <g data-connection="relay-kafka" role="button" tabindex="0" aria-label="Outbox relay publishes events to Kafka">
+            <path class="system-edge" data-edge="relay kafka" data-flow-type="async" d="M625 222 V248" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M625 222 V248"></path>
+            <rect class="edge-label-bg" x="635" y="228" width="92" height="16" rx="4"></rect>
+            <text class="edge-label" x="681" y="239">PUBLISH EVENT</text>
+          </g>
+          <g data-connection="api-kafka" role="button" tabindex="0" aria-label="Payment API publishes directly to Kafka">
+            <path class="system-edge" data-edge="api kafka" data-flow-type="async" d="M420 132 C480 160 520 270 545 286" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M420 132 C480 160 520 270 545 286"></path>
+            <rect class="edge-label-bg" x="451" y="198" width="102" height="16" rx="4"></rect>
+            <text class="edge-label" x="502" y="209">DIRECT PRODUCE</text>
+          </g>
+          <g data-connection="postgres-replica" role="button" tabindex="0" aria-label="PostgreSQL primary streams changes to read replica">
+            <path class="system-edge" data-edge="postgres replica" data-flow-type="async" d="M705 116 H780" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M705 116 H780"></path>
+            <rect class="edge-label-bg" x="714" y="96" width="58" height="16" rx="4"></rect>
+            <text class="edge-label" x="743" y="107">WAL</text>
           </g>
           <g data-connection="api-sqs" role="button" tabindex="0" aria-label="API sends background job to SQS">
-            <path class="system-edge" data-edge="api sqs" data-flow-type="async" d="M390 132 C500 170 650 255 758 278" marker-end="url(#arrowhead)"></path>
-            <path class="edge-hit" d="M390 132 C500 170 650 255 758 278"></path>
-            <rect class="edge-label-bg" x="516" y="190" width="78" height="16" rx="4"></rect>
-            <text class="edge-label" x="555" y="201">SEND JOB</text>
+            <path class="system-edge" data-edge="api sqs" data-flow-type="async" d="M420 146 C560 205 720 260 780 300" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M420 146 C560 205 720 260 780 300"></path>
+            <rect class="edge-label-bg" x="655" y="242" width="78" height="16" rx="4"></rect>
+            <text class="edge-label" x="694" y="253">SEND JOB</text>
+          </g>
+          <g data-connection="api-provider" role="button" tabindex="0" aria-label="Payment API calls external payment provider">
+            <path class="system-edge" data-edge="api provider" data-flow-type="sync" d="M260 134 C215 170 190 240 165 268" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M260 134 C215 170 190 240 165 268"></path>
+            <rect class="edge-label-bg" x="170" y="198" width="82" height="16" rx="4"></rect>
+            <text class="edge-label" x="211" y="209">HTTPS API</text>
           </g>
           <g data-connection="temporal-api" role="button" tabindex="0" aria-label="Temporal invokes API activity">
-            <path class="system-edge" data-edge="temporal api" data-flow-type="workflow" d="M310 286 V154" marker-end="url(#arrowhead)"></path>
-            <path class="edge-hit" d="M310 286 V154"></path>
-            <rect class="edge-label-bg" x="200" y="200" width="98" height="16" rx="4"></rect>
-            <text class="edge-label" x="249" y="211">ACTIVITY CALL</text>
+            <path class="system-edge" data-edge="temporal api" data-flow-type="workflow" d="M300 326 C285 250 300 195 315 154" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M300 326 C285 250 300 195 315 154"></path>
+            <rect class="edge-label-bg" x="250" y="235" width="98" height="16" rx="4"></rect>
+            <text class="edge-label" x="299" y="246">ACTIVITY CALL</text>
           </g>
-          <g data-connection="kafka-workers" role="button" tabindex="0" aria-label="Workers consume Kafka events">
-            <path class="system-edge" data-edge="kafka workers" data-flow-type="async" d="M635 300 C610 356 520 390 455 432" marker-end="url(#arrowhead)"></path>
-            <path class="edge-hit" d="M635 300 C610 356 520 390 455 432"></path>
-            <rect class="edge-label-bg" x="532" y="360" width="104" height="16" rx="4"></rect>
-            <text class="edge-label" x="584" y="371">POLL + OFFSET</text>
+          <g data-connection="kafka-consumers" role="button" tabindex="0" aria-label="Kafka partitions are read by consumer groups">
+            <path class="system-edge" data-edge="kafka consumers" data-flow-type="async" d="M625 324 V492" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M625 324 V492"></path>
+            <rect class="edge-label-bg" x="635" y="402" width="104" height="16" rx="4"></rect>
+            <text class="edge-label" x="687" y="413">POLL + OFFSET</text>
+          </g>
+          <g data-connection="consumers-workers" role="button" tabindex="0" aria-label="Consumer groups dispatch records to worker services">
+            <path class="system-edge" data-edge="consumers workers" data-flow-type="async" d="M555 528 H455" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M555 528 H455"></path>
           </g>
           <g data-connection="sqs-workers" role="button" tabindex="0" aria-label="Workers receive and acknowledge SQS jobs">
-            <path class="system-edge" data-edge="sqs workers" data-flow-type="async" d="M798 316 C750 390 570 420 455 452" marker-end="url(#arrowhead)"></path>
-            <path class="edge-hit" d="M798 316 C750 390 570 420 455 452"></path>
-            <rect class="edge-label-bg" x="640" y="392" width="92" height="16" rx="4"></rect>
-            <text class="edge-label" x="686" y="403">RECEIVE + ACK</text>
+            <path class="system-edge" data-edge="sqs workers" data-flow-type="async" d="M820 348 C760 470 580 500 455 548" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M820 348 C760 470 580 500 455 548"></path>
+            <rect class="edge-label-bg" x="720" y="448" width="92" height="16" rx="4"></rect>
+            <text class="edge-label" x="766" y="459">RECEIVE + ACK</text>
+          </g>
+          <g data-connection="sqs-dlq" role="button" tabindex="0" aria-label="SQS redrives repeatedly failing jobs to dead-letter queue">
+            <path class="system-edge" data-edge="sqs dlq" data-flow-type="async" d="M860 348 V492" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M860 348 V492"></path>
+            <rect class="edge-label-bg" x="870" y="412" width="68" height="16" rx="4"></rect>
+            <text class="edge-label" x="904" y="423">REDRIVE</text>
           </g>
           <g data-connection="temporal-workers" role="button" tabindex="0" aria-label="Temporal dispatches activities to workers">
-            <path class="system-edge" data-edge="temporal workers" data-flow-type="workflow" d="M350 324 C365 365 390 395 400 422" marker-end="url(#arrowhead)"></path>
-            <path class="edge-hit" d="M350 324 C365 365 390 395 400 422"></path>
-            <rect class="edge-label-bg" x="310" y="370" width="92" height="16" rx="4"></rect>
-            <text class="edge-label" x="356" y="381">TASK QUEUE</text>
+            <path class="system-edge" data-edge="temporal workers" data-flow-type="workflow" d="M330 402 L370 510" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M330 402 L370 510"></path>
+            <rect class="edge-label-bg" x="330" y="450" width="92" height="16" rx="4"></rect>
+            <text class="edge-label" x="376" y="461">TASK QUEUE</text>
           </g>
           <g data-connection="workers-search" role="button" tabindex="0" aria-label="Workers index documents into OpenSearch">
-            <path class="system-edge" data-edge="workers search" data-flow-type="async" d="M455 460 H585" marker-end="url(#arrowhead)"></path>
-            <path class="edge-hit" d="M455 460 H585"></path>
-            <rect class="edge-label-bg" x="480" y="440" width="80" height="16" rx="4"></rect>
-            <text class="edge-label" x="520" y="451">INDEX DOC</text>
+            <path class="system-edge" data-edge="workers search" data-flow-type="async" d="M455 566 H585" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M455 566 H585"></path>
+            <rect class="edge-label-bg" x="480" y="546" width="80" height="16" rx="4"></rect>
+            <text class="edge-label" x="520" y="557">INDEX DOC</text>
           </g>
           <g data-connection="workers-s3" role="button" tabindex="0" aria-label="Workers put objects into S3">
-            <path class="system-edge" data-edge="workers s3" data-flow-type="storage" d="M395 498 L340 548" marker-end="url(#arrowhead)"></path>
-            <path class="edge-hit" d="M395 498 L340 548"></path>
-            <rect class="edge-label-bg" x="330" y="510" width="72" height="16" rx="4"></rect>
-            <text class="edge-label" x="366" y="521">PUT OBJECT</text>
+            <path class="system-edge" data-edge="workers s3" data-flow-type="storage" d="M375 604 V664" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M375 604 V664"></path>
+            <rect class="edge-label-bg" x="384" y="626" width="72" height="16" rx="4"></rect>
+            <text class="edge-label" x="420" y="637">PUT OBJECT</text>
           </g>
           <g data-connection="prometheus-services" role="button" tabindex="0" aria-label="Prometheus scrapes API and worker metrics">
-            <path class="system-edge" data-edge="prometheus api workers" data-flow-type="metrics" d="M845 574 C760 530 560 515 455 482 M845 574 C690 460 500 245 390 140" marker-end="url(#arrowhead)"></path>
-            <path class="edge-hit" d="M845 574 C760 530 560 515 455 482 M845 574 C690 460 500 245 390 140"></path>
-            <rect class="edge-label-bg" x="690" y="520" width="98" height="16" rx="4"></rect>
-            <text class="edge-label" x="739" y="531">GET /metrics</text>
+            <path class="system-edge" data-edge="prometheus api workers" data-flow-type="metrics" d="M875 692 C760 650 570 620 455 586 M875 692 C700 530 500 250 420 140" marker-end="url(#arrowhead)"></path>
+            <path class="edge-hit" d="M875 692 C760 650 570 620 455 586 M875 692 C700 530 500 250 420 140"></path>
+            <rect class="edge-label-bg" x="720" y="644" width="98" height="16" rx="4"></rect>
+            <text class="edge-label" x="769" y="655">GET /metrics</text>
           </g>
 
           <g class="system-node" data-component="client" role="button" tabindex="0" aria-label="Client">
-            <rect x="38" y="78" width="118" height="76" rx="9"></rect>
-            <text x="97" y="108">Client</text>
-            <text class="node-kind" x="97" y="128">WEB / MOBILE</text>
-            <path d="M82 136 h30" stroke="#58a6ff" stroke-width="3"></path>
+            <rect x="28" y="78" width="118" height="76" rx="9"></rect>
+            <text x="87" y="108">Client</text>
+            <text class="node-kind" x="87" y="128">WEB / MOBILE</text>
+            <path d="M72 136 h30" stroke="#58a6ff" stroke-width="3"></path>
+          </g>
+          <g class="system-node" data-component="gateway" role="button" tabindex="0" aria-label="API gateway">
+            <rect x="158" y="86" width="60" height="60" rx="9"></rect>
+            <text x="188" y="111">API</text>
+            <text x="188" y="126">Gateway</text>
+            <text class="node-kind" x="188" y="140">ROUTING</text>
           </g>
           <g class="system-node" data-component="api" role="button" tabindex="0" aria-label="API service">
-            <rect x="230" y="78" width="160" height="76" rx="9"></rect>
-            <text x="310" y="108">Payment API</text>
-            <text class="node-kind" x="310" y="128">PYTHON SERVICE</text>
-            <circle cx="252" cy="116" r="12" fill="#3776ab"></circle>
-            <text x="252" y="120" font-size="9">Py</text>
+            <rect x="260" y="78" width="160" height="76" rx="9"></rect>
+            <text x="340" y="108">Payment API</text>
+            <text class="node-kind" x="340" y="128">PYTHON SERVICE</text>
+            <circle cx="282" cy="116" r="12" fill="#3776ab"></circle>
+            <text x="282" y="120" font-size="9">Py</text>
           </g>
           <g class="system-node" data-component="postgres" role="button" tabindex="0" aria-label="PostgreSQL">
-            <rect x="555" y="78" width="160" height="76" rx="9"></rect>
-            <image href="https://cdn.simpleicons.org/postgresql/4169E1" x="570" y="94" width="28" height="28"></image>
-            <text x="645" y="108">PostgreSQL</text>
-            <text class="node-kind" x="645" y="128">SOURCE OF TRUTH</text>
+            <rect x="545" y="78" width="160" height="76" rx="9"></rect>
+            <image href="assets/logos/postgresql.svg" x="560" y="94" width="28" height="28"></image>
+            <text x="635" y="108">PostgreSQL</text>
+            <text class="node-kind" x="635" y="128">PRIMARY / WRITES</text>
+          </g>
+          <g class="system-node" data-component="replica" role="button" tabindex="0" aria-label="PostgreSQL read replica">
+            <rect x="780" y="78" width="150" height="76" rx="9"></rect>
+            <image href="assets/logos/postgresql.svg" x="795" y="94" width="28" height="28"></image>
+            <text x="865" y="108">Read Replica</text>
+            <text class="node-kind" x="865" y="128">READS / FAILOVER</text>
+          </g>
+          <g class="system-node" data-component="relay" role="button" tabindex="0" aria-label="Outbox relay or CDC connector">
+            <rect x="565" y="174" width="120" height="48" rx="9"></rect>
+            <text x="625" y="196">Outbox Relay</text>
+            <text class="node-kind" x="625" y="212">POLL / CDC</text>
           </g>
           <g class="system-node" data-component="temporal" role="button" tabindex="0" aria-label="Temporal">
-            <rect x="230" y="248" width="160" height="76" rx="9"></rect>
-            <image href="https://cdn.simpleicons.org/temporal/FFFFFF" x="245" y="264" width="28" height="28"></image>
-            <text x="320" y="278">Temporal</text>
-            <text class="node-kind" x="320" y="298">DURABLE WORKFLOW</text>
+            <rect x="260" y="326" width="160" height="76" rx="9"></rect>
+            <image href="assets/logos/temporal.svg" x="275" y="342" width="28" height="28"></image>
+            <text x="350" y="356">Temporal</text>
+            <text class="node-kind" x="350" y="376">DURABLE WORKFLOW</text>
           </g>
           <g class="system-node" data-component="redis" role="button" tabindex="0" aria-label="Redis">
-            <rect x="410" y="248" width="145" height="76" rx="9"></rect>
-            <image href="https://cdn.simpleicons.org/redis/FF4438" x="424" y="264" width="28" height="28"></image>
-            <text x="490" y="278">Redis</text>
-            <text class="node-kind" x="490" y="298">CACHE + LIMITS</text>
+            <rect x="260" y="224" width="160" height="76" rx="9"></rect>
+            <image href="assets/logos/redis.svg" x="275" y="240" width="28" height="28"></image>
+            <text x="350" y="254">Redis</text>
+            <text class="node-kind" x="350" y="274">CACHE + LIMITS</text>
           </g>
           <g class="system-node" data-component="kafka" role="button" tabindex="0" aria-label="Kafka">
-            <rect x="555" y="224" width="160" height="76" rx="9"></rect>
-            <image href="https://cdn.simpleicons.org/apachekafka/FFFFFF" x="570" y="240" width="28" height="28"></image>
-            <text x="645" y="254">Kafka</text>
-            <text class="node-kind" x="645" y="274">EVENT HISTORY</text>
+            <rect x="545" y="248" width="160" height="76" rx="9"></rect>
+            <image href="assets/logos/kafka.svg" x="560" y="264" width="28" height="28"></image>
+            <text x="635" y="278">Kafka</text>
+            <text class="node-kind" x="635" y="298">PARTITIONED LOG</text>
           </g>
           <g class="system-node" data-component="sqs" role="button" tabindex="0" aria-label="Amazon SQS">
-            <rect x="758" y="248" width="160" height="76" rx="9"></rect>
-            <circle cx="787" cy="278" r="14" fill="#FF4F8B"></circle>
-            <text x="787" y="281" font-size="7">SQS</text>
-            <text x="848" y="278">Amazon SQS</text>
-            <text class="node-kind" x="848" y="298">WORK QUEUE</text>
+            <rect x="780" y="272" width="150" height="76" rx="9"></rect>
+            <circle cx="807" cy="310" r="14" fill="#FF4F8B"></circle>
+            <text x="807" y="313" font-size="7">SQS</text>
+            <text x="865" y="302">Amazon SQS</text>
+            <text class="node-kind" x="865" y="322">WORK QUEUE</text>
+          </g>
+          <g class="system-node" data-component="provider" role="button" tabindex="0" aria-label="External payment provider">
+            <rect x="35" y="248" width="150" height="76" rx="9"></rect>
+            <text x="110" y="278">Payment Provider</text>
+            <text class="node-kind" x="110" y="298">EXTERNAL NETWORK</text>
+          </g>
+          <g class="system-node" data-component="consumers" role="button" tabindex="0" aria-label="Kafka consumer groups">
+            <rect x="555" y="492" width="150" height="72" rx="9"></rect>
+            <text x="630" y="520">Consumer Groups</text>
+            <text class="node-kind" x="630" y="542">RISK / RECON / SEARCH</text>
+          </g>
+          <g class="system-node" data-component="dlq" role="button" tabindex="0" aria-label="Dead-letter queue">
+            <rect x="790" y="492" width="140" height="72" rx="9"></rect>
+            <text x="860" y="520">Dead-letter Queue</text>
+            <text class="node-kind" x="860" y="542">FAILED JOBS</text>
           </g>
           <g class="system-node" data-component="workers" role="button" tabindex="0" aria-label="Worker services">
-            <rect x="295" y="422" width="160" height="76" rx="9"></rect>
-            <text x="375" y="452">Worker Pool</text>
-            <text class="node-kind" x="375" y="472">ASYNC SERVICES</text>
-            <circle cx="318" cy="460" r="12" fill="#00add8"></circle>
-            <text x="318" y="464" font-size="8">Go</text>
+            <rect x="295" y="510" width="160" height="94" rx="9"></rect>
+            <text x="375" y="544">Worker Services</text>
+            <text class="node-kind" x="375" y="565">IDEMPOTENT CONSUMERS</text>
+            <circle cx="318" cy="557" r="12" fill="#00add8"></circle>
+            <text x="318" y="561" font-size="8">Go</text>
           </g>
           <g class="system-node" data-component="search" role="button" tabindex="0" aria-label="OpenSearch">
-            <rect x="585" y="422" width="160" height="76" rx="9"></rect>
-            <image href="https://cdn.simpleicons.org/opensearch/005EB8" x="600" y="438" width="28" height="28"></image>
-            <text x="675" y="452">OpenSearch</text>
-            <text class="node-kind" x="675" y="472">SEARCH PROJECTION</text>
+            <rect x="585" y="600" width="160" height="76" rx="9"></rect>
+            <image href="assets/logos/opensearch.svg" x="600" y="616" width="28" height="28"></image>
+            <text x="675" y="630">OpenSearch</text>
+            <text class="node-kind" x="675" y="650">SEARCH PROJECTION</text>
           </g>
           <g class="system-node" data-component="s3" role="button" tabindex="0" aria-label="S3 object storage">
-            <rect x="235" y="548" width="150" height="58" rx="9"></rect>
-            <circle cx="263" cy="577" r="13" fill="#569A31"></circle>
-            <text x="263" y="580" font-size="8">S3</text>
-            <text x="325" y="573">Amazon S3</text>
-            <text class="node-kind" x="325" y="591">FILES + EXPORTS</text>
+            <rect x="300" y="664" width="150" height="58" rx="9"></rect>
+            <circle cx="328" cy="693" r="13" fill="#569A31"></circle>
+            <text x="328" y="696" font-size="8">S3</text>
+            <text x="390" y="689">Amazon S3</text>
+            <text class="node-kind" x="390" y="707">FILES + EXPORTS</text>
           </g>
           <g class="system-node" data-component="prometheus" role="button" tabindex="0" aria-label="Prometheus">
-            <rect x="805" y="548" width="145" height="58" rx="9"></rect>
-            <image href="https://cdn.simpleicons.org/prometheus/E6522C" x="818" y="563" width="26" height="26"></image>
-            <text x="888" y="573">Prometheus</text>
-            <text class="node-kind" x="888" y="591">METRICS</text>
+            <rect x="805" y="664" width="145" height="58" rx="9"></rect>
+            <image href="assets/logos/prometheus.svg" x="818" y="679" width="26" height="26"></image>
+            <text x="888" y="689">Prometheus</text>
+            <text class="node-kind" x="888" y="707">METRICS</text>
           </g>
         </svg>
-        <p class="diagram-hint">Tip: use Tab and Enter to explore without a mouse. Scroll horizontally on small screens.</p>
+        <p class="diagram-hint">Tip: select a component or connection for details. Click outside the popup or press Escape to clear the selection.</p>
       </div>
-
-      <aside class="component-panel" aria-live="polite">
-        <div class="panel-eyebrow" id="component-kind">Architecture explorer</div>
-        <h3 id="component-title">Select a component</h3>
-        <p id="component-summary">Click any box to see why it exists, what passes through it, and what happens when it fails.</p>
-        <div class="panel-facts" id="component-facts"></div>
-        <a class="panel-link" id="component-link" href="#system" hidden>Read its toolbox summary</a>
-      </aside>
     </div>
   </section>
+
+  <div class="component-modal" id="component-modal" hidden>
+    <aside class="component-panel" role="dialog" aria-modal="true" aria-labelledby="component-title" aria-describedby="component-summary">
+      <button class="modal-close" id="modal-close" type="button" aria-label="Close details">×</button>
+      <div class="panel-eyebrow" id="component-kind">Architecture explorer</div>
+      <h3 id="component-title">Component details</h3>
+      <p id="component-summary"></p>
+      <div class="panel-facts" id="component-facts"></div>
+      <a class="panel-link" id="component-link" href="#system" hidden>Read its toolbox summary</a>
+    </aside>
+  </div>
 
   <section id="chooser">
     <h2>Choose by Workload</h2>
@@ -1071,13 +1194,21 @@
 
 <script>
   const connections = {
-    'client-api': {
-      title: 'Client → API',
-      summary: 'Synchronous HTTPS request carrying a user command.',
-      role: 'Authenticate, validate, and return a bounded response.',
+    'client-gateway': {
+      title: 'Client → API Gateway',
+      summary: 'The public HTTPS boundary for web and mobile traffic.',
+      role: 'Terminate TLS and apply authentication, throttling, routing, and request limits.',
       data: 'Payment intent, idempotency key, amount, currency, and authorization token.',
-      failure: 'A timeout is ambiguous. The client may retry, so the idempotency key must return the original result.',
-      fit: 'Keep the interactive request short. Move slow or retry-heavy work to queues and workflows.'
+      failure: 'The client sees a network error or timeout and may retry.',
+      fit: 'One controlled entry point protects internal services and centralizes edge policy.'
+    },
+    'gateway-api': {
+      title: 'API Gateway → Payment API',
+      summary: 'The gateway routes an authenticated request to a healthy API instance.',
+      role: 'Load-balance stateless service replicas and propagate request identity and trace context.',
+      data: 'Validated HTTP request, identity claims, correlation ID, and idempotency key.',
+      failure: 'The gateway retries only operations known to be safe; otherwise the caller decides.',
+      fit: 'Horizontal service scaling stays separate from public routing and security.'
     },
     'api-postgres': {
       title: 'API → PostgreSQL',
@@ -1095,13 +1226,37 @@
       failure: 'Fall back to PostgreSQL or reject optional acceleration. Never invent authoritative state.',
       fit: 'Redis reduces latency without becoming the ledger.'
     },
-    'postgres-kafka': {
-      title: 'PostgreSQL → Kafka',
-      summary: 'A relay publishes committed outbox rows as durable domain events.',
-      role: 'Bridge one database transaction to asynchronous event delivery without a dual-write gap.',
+    'postgres-relay': {
+      title: 'PostgreSQL → Outbox Relay',
+      summary: 'The relay discovers events committed inside the application transaction.',
+      role: 'Poll an outbox table or consume database changes through CDC.',
       data: 'Transfer ID, event type, account key, version, timestamp, and immutable payload.',
-      failure: 'Unpublished rows remain in the outbox and are retried. Consumers must deduplicate.',
-      fit: 'The outbox makes database commit authoritative while Kafka serves replay and fan-out.'
+      failure: 'Rows remain committed and discoverable while the relay is down.',
+      fit: 'PostgreSQL does not publish to Kafka itself; a relay bridges the systems.'
+    },
+    'relay-kafka': {
+      title: 'Outbox Relay → Kafka',
+      summary: 'The relay publishes committed domain events to Kafka.',
+      role: 'Deliver database-coupled events without losing the record after commit.',
+      data: 'Versioned event envelope, partition key, event ID, and domain payload.',
+      failure: 'Publish retries can duplicate events. Consumers deduplicate by event ID.',
+      fit: 'The database commit is authoritative; Kafka delivery catches up asynchronously.'
+    },
+    'api-kafka': {
+      title: 'Payment API → Kafka',
+      summary: 'The service may publish directly when an event is not atomically coupled to a database write.',
+      role: 'Produce telemetry, integration commands, or events whose source operation is Kafka itself.',
+      data: 'Topic, partition key, headers, schema version, event ID, and payload.',
+      failure: 'A database commit and Kafka publish can diverge if treated as one logical operation.',
+      fit: 'Direct publishing is valid, but producer acknowledgements, retries, and idempotency must be explicit.'
+    },
+    'postgres-replica': {
+      title: 'PostgreSQL Primary → Read Replica',
+      summary: 'WAL changes stream to a replica that can serve read traffic or support failover.',
+      role: 'Offload suitable reads and maintain a warm copy of committed data.',
+      data: 'Physical or logical changes derived from the primary write-ahead log.',
+      failure: 'Replication lag means recent writes may not yet be visible on the replica.',
+      fit: 'Replication improves read capacity and availability; it does not horizontally scale writes.'
     },
     'api-sqs': {
       title: 'API → SQS',
@@ -1111,6 +1266,14 @@
       failure: 'Send may retry. Use a stable job identity when duplicate submission matters.',
       fit: 'A managed queue is simpler than an event log when history and many readers are unnecessary.'
     },
+    'api-provider': {
+      title: 'Payment API → Payment Provider',
+      summary: 'A synchronous call crosses the system boundary into an external network.',
+      role: 'Authorize, capture, refund, or query a payment through a provider API.',
+      data: 'Provider token, amount, currency, merchant reference, and idempotency key.',
+      failure: 'Timeout does not prove failure. Reconcile or query status before repeating a side effect.',
+      fit: 'External calls require bounded timeouts, retries with jitter, idempotency, and reconciliation.'
+    },
     'temporal-api': {
       title: 'Temporal → API activity',
       summary: 'A durable workflow schedules a bounded service operation.',
@@ -1119,13 +1282,21 @@
       failure: 'Temporal retries activity execution. The API operation must be idempotent.',
       fit: 'Workflow history replaces fragile in-memory orchestration for long-running processes.'
     },
-    'kafka-workers': {
-      title: 'Kafka → Workers',
-      summary: 'Consumer groups read retained events and commit offsets after processing.',
+    'kafka-consumers': {
+      title: 'Kafka → Consumer Groups',
+      summary: 'Each logical consumer group independently reads retained topic partitions.',
       role: 'Fan one event stream into reconciliation, risk, notifications, and projections.',
       data: 'Ordered records within a partition, commonly keyed by account or transfer.',
-      failure: 'Lag grows while workers are down. Processing resumes from committed offsets.',
-      fit: 'Replay enables projection rebuilds and independent consumers.'
+      failure: 'Group lag grows while its consumers are unavailable.',
+      fit: 'Every group receives the event; instances inside one group divide partition work.'
+    },
+    'consumers-workers': {
+      title: 'Consumer Group → Worker Services',
+      summary: 'Consumer instances process assigned partitions and commit progress.',
+      role: 'Apply domain side effects or update one derived projection.',
+      data: 'Record payload, key, partition, offset, headers, and consumer-group identity.',
+      failure: 'A rebalance or crash causes another instance to resume from the committed offset.',
+      fit: 'At-least-once processing requires idempotent consumers and careful offset commits.'
     },
     'sqs-workers': {
       title: 'SQS → Workers',
@@ -1134,6 +1305,14 @@
       data: 'Job payload plus receipt handle used for delete or visibility extension.',
       failure: 'Unacknowledged work becomes visible again. Poison jobs move to a DLQ.',
       fit: 'At-least-once delivery requires idempotent side effects.'
+    },
+    'sqs-dlq': {
+      title: 'SQS → Dead-letter Queue',
+      summary: 'Repeatedly failing jobs are isolated after the configured receive threshold.',
+      role: 'Prevent poison messages from blocking normal work and preserve them for diagnosis.',
+      data: 'Original job payload plus queue metadata and receive count.',
+      failure: 'An ignored DLQ silently accumulates failed business work.',
+      fit: 'DLQs need alarms, inspection, repair, and an intentional redrive process.'
     },
     'temporal-workers': {
       title: 'Temporal → Workers',
@@ -1179,6 +1358,15 @@
       failure: 'The user may retry after a timeout. The API must make that retry safe.',
       fit: 'Keep business invariants on the server. Treat client state as untrusted.'
     },
+    gateway: {
+      kind: 'Edge infrastructure',
+      title: 'API Gateway / Load Balancer',
+      summary: 'The controlled public boundary in front of stateless service replicas.',
+      role: 'Terminate TLS, authenticate, rate-limit, route, and load-balance requests.',
+      data: 'HTTP requests, identity claims, trace headers, and routing metadata.',
+      failure: 'Public traffic cannot reach the service even if internal instances are healthy.',
+      fit: 'Central edge policy avoids duplicating internet-facing concerns in every service.'
+    },
     api: {
       kind: 'Application service',
       title: 'Payment API',
@@ -1197,6 +1385,26 @@
       failure: 'New writes stop or fail over. Existing committed data must remain correct.',
       fit: 'Money requires transactions, constraints, indexes, and auditable relational records.',
       link: '#postgresql'
+    },
+    replica: {
+      kind: 'Database replica',
+      title: 'PostgreSQL Read Replica',
+      summary: 'A replicated copy used for suitable reads, recovery, or promotion.',
+      role: 'Reduce read load on the primary and improve database availability.',
+      data: 'Changes streamed from primary WAL, usually applied asynchronously.',
+      failure: 'Reads return to the primary or another replica. Promotion requires controlled failover.',
+      fit: 'A replica adds read capacity, but lag makes read-after-write routing important.',
+      link: '#postgresql'
+    },
+    relay: {
+      kind: 'Delivery service',
+      title: 'Outbox Relay / CDC',
+      summary: 'Publishes database-coupled events after the containing transaction commits.',
+      role: 'Read outbox rows or WAL changes and produce versioned events to Kafka.',
+      data: 'Event ID, aggregate ID, event type, version, timestamp, and payload.',
+      failure: 'Delivery pauses, but committed events remain available for retry.',
+      fit: 'This closes the database and Kafka dual-write gap without pretending they share one transaction.',
+      link: '#kafka'
     },
     redis: {
       kind: 'In-memory store',
@@ -1226,6 +1434,35 @@
       data: 'Small job descriptions containing identifiers, attempt metadata, and trace context.',
       failure: 'Visibility timeout returns unfinished work. Repeated failures move to a DLQ.',
       fit: 'Low-operations AWS queue when retained event history and complex routing are unnecessary.',
+      link: '#sqs'
+    },
+    provider: {
+      kind: 'External dependency',
+      title: 'Payment Provider',
+      summary: 'An external system that executes card, bank, or wallet operations.',
+      role: 'Authorize, capture, refund, settle, and report provider-side payment state.',
+      data: 'Provider tokens, monetary amounts, merchant references, and idempotency keys.',
+      failure: 'Timeouts create unknown outcomes. Reconciliation resolves local and provider state.',
+      fit: 'External boundaries are where timeout, retry, circuit-breaking, and idempotency design matter most.'
+    },
+    consumers: {
+      kind: 'Kafka consumption model',
+      title: 'Consumer Groups',
+      summary: 'Independent groups each receive the event stream, while instances within a group divide partitions.',
+      role: 'Let risk, reconciliation, search, and notification systems consume at their own pace.',
+      data: 'Partition assignments, records, offsets, lag, and group membership.',
+      failure: 'Lag rises or rebalances occur; retained records allow the group to catch up.',
+      fit: 'Consumer groups provide both fan-out across applications and work sharing within one application.',
+      link: '#kafka'
+    },
+    dlq: {
+      kind: 'Failure isolation',
+      title: 'Dead-letter Queue',
+      summary: 'Holds jobs that exceeded the normal retry policy.',
+      role: 'Isolate poison messages and make failed business work inspectable.',
+      data: 'Original job payload, receive count, failure context, and correlation identifiers.',
+      failure: 'Without monitoring and redrive ownership, failed work is merely hidden.',
+      fit: 'A DLQ is an operational workflow, not a permanent trash bin.',
       link: '#sqs'
     },
     workers: {
@@ -1287,6 +1524,31 @@
   const componentSummary = document.getElementById('component-summary');
   const componentFacts = document.getElementById('component-facts');
   const componentLink = document.getElementById('component-link');
+  const componentModal = document.getElementById('component-modal');
+  const modalClose = document.getElementById('modal-close');
+  const systemDiagram = document.querySelector('.system-canvas svg');
+  let activeDiagramTrigger = null;
+
+  function openComponentModal(trigger) {
+    activeDiagramTrigger = trigger;
+    componentModal.hidden = false;
+    document.body.classList.add('modal-open');
+    modalClose.focus();
+  }
+
+  function clearDiagramSelection({ restoreFocus = true } = {}) {
+    componentNodes.forEach((node) => {
+      node.classList.remove('is-active', 'is-muted');
+      node.setAttribute('aria-pressed', 'false');
+    });
+    componentEdges.forEach((edge) => edge.classList.remove('is-active', 'is-muted'));
+    connectionGroups.forEach((connection) => connection.setAttribute('aria-pressed', 'false'));
+    componentModal.hidden = true;
+    document.body.classList.remove('modal-open');
+
+    if (restoreFocus && activeDiagramTrigger) activeDiagramTrigger.focus();
+    activeDiagramTrigger = null;
+  }
 
   function selectComponent(name) {
     const component = components[name];
@@ -1330,6 +1592,7 @@
 
     componentLink.hidden = !component.link;
     if (component.link) componentLink.href = component.link;
+    openComponentModal(componentNodes.find((node) => node.dataset.component === name));
   }
 
   function selectConnection(name) {
@@ -1372,6 +1635,7 @@
       return fact;
     }));
     componentLink.hidden = true;
+    openComponentModal(selectedGroup);
   }
 
   componentNodes.forEach((node) => {
@@ -1390,6 +1654,33 @@
       event.preventDefault();
       selectConnection(connection.dataset.connection);
     });
+  });
+
+  modalClose.addEventListener('click', () => clearDiagramSelection());
+  componentModal.addEventListener('click', (event) => {
+    if (event.target === componentModal) clearDiagramSelection();
+  });
+  componentModal.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+
+    const focusable = [...componentModal.querySelectorAll('button, a:not([hidden])')];
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  systemDiagram.addEventListener('click', (event) => {
+    if (event.target.closest('.system-node, [data-connection]')) return;
+    clearDiagramSelection({ restoreFocus: false });
+  });
+  componentLink.addEventListener('click', () => clearDiagramSelection({ restoreFocus: false }));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !componentModal.hidden) clearDiagramSelection();
   });
 
   const choices = {
