@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lost Update &amp; the Ledger Invariant | keystone</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --purple: #bc8cff;
+      --orange: #ffa657;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    .site-nav {
+      display: flex; align-items: center; gap: 12px;
+      padding: 16px 40px; border-bottom: 1px solid var(--border); background: var(--surface);
+    }
+    .nav-logo { font-weight: 700; font-size: 15px; color: var(--accent); text-decoration: none; }
+    .nav-sep { color: var(--border); }
+    .nav-desc { color: var(--muted); font-size: 13px; flex: 1; }
+    .nav-home { font-size: 13px; color: var(--muted); text-decoration: none; }
+    .nav-home:hover { color: var(--accent); }
+
+    main { max-width: 920px; padding: 48px 40px; margin: 0 auto; }
+
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+    .subtitle { color: var(--muted); font-size: 15px; margin-bottom: 40px; }
+
+    h2 {
+      font-size: 1.3rem; font-weight: 600; margin: 48px 0 16px;
+      padding-bottom: 8px; border-bottom: 1px solid var(--border); color: var(--text);
+    }
+    h3 { font-size: 1rem; font-weight: 600; margin: 28px 0 10px; color: var(--accent); }
+    p { margin-bottom: 14px; color: var(--text); }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    code {
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px;
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 2px 6px; border-radius: 4px; color: var(--orange);
+    }
+    pre {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 20px; overflow-x: auto; margin: 16px 0;
+    }
+    pre code { background: none; border: none; padding: 0; font-size: 12.5px; color: var(--text); }
+    .kw { color: var(--purple); }
+    .ty { color: var(--accent); }
+    .cm { color: var(--muted); font-style: italic; }
+    .cn { color: var(--green); }
+
+    .callout {
+      border-radius: 8px; padding: 16px 20px; margin: 20px 0;
+      border-left: 3px solid; font-size: 14px;
+    }
+    .callout.info { background: #1c2a3a; border-color: var(--accent); }
+    .callout.warn { background: #2a2010; border-color: var(--yellow); }
+    .callout.danger { background: #2a1010; border-color: var(--red); }
+    .callout.success { background: #102a15; border-color: var(--green); }
+    .callout .label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; margin-bottom: 6px;
+    }
+    .callout.info .label { color: var(--accent); }
+    .callout.warn .label { color: var(--yellow); }
+    .callout.danger .label { color: var(--red); }
+    .callout.success .label { color: var(--green); }
+
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px; }
+    th {
+      background: var(--surface); border: 1px solid var(--border); padding: 10px 14px;
+      text-align: left; color: var(--muted); font-weight: 600; font-size: 12px;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    td { border: 1px solid var(--border); padding: 10px 14px; vertical-align: top; }
+    tr:nth-child(even) td { background: #0f141a; }
+
+    section { scroll-margin-top: 32px; }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+    /* ---- Interactive ledger ---- */
+    .lab {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 24px; margin: 24px 0;
+    }
+    .ledger-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px;
+    }
+    .acct {
+      border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+      padding: 16px 18px;
+    }
+    .acct h4 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 12px; }
+    .acct .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+    .acct .row .lbl { font-size: 12px; color: var(--muted); }
+    .num { font-family: 'SF Mono', monospace; font-size: 15px; font-weight: 600; }
+    .num.cache { color: var(--orange); }
+    .num.truth { color: var(--accent); }
+    .num.match { color: var(--green); }
+    .num.mismatch { color: var(--red); }
+
+    .views-legend { display: flex; gap: 18px; font-size: 12px; color: var(--muted); margin-bottom: 16px; flex-wrap: wrap; }
+    .views-legend span::before { content: '●'; margin-right: 5px; }
+    .views-legend .c-cache::before { color: var(--orange); }
+    .views-legend .c-truth::before { color: var(--accent); }
+
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+    .controls button {
+      border: 1px solid var(--border); border-radius: 6px; padding: 9px 14px;
+      background: var(--bg); color: var(--text); cursor: pointer; font: inherit; font-size: 13px;
+    }
+    .controls button:hover { border-color: var(--accent); color: var(--accent); }
+    .controls button.danger:hover { border-color: var(--red); color: var(--red); }
+    .controls button.reset { margin-left: auto; }
+
+    .invariants { display: grid; gap: 10px; margin-top: 8px; }
+    .inv {
+      display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 12px;
+      border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; background: var(--bg);
+    }
+    .inv .badge { font-size: 18px; text-align: center; }
+    .inv.ok { border-color: #275d38; }
+    .inv.bad { border-color: #6e2222; background: #1a0f0f; }
+    .inv .desc { font-size: 13px; }
+    .inv .desc .name { font-weight: 700; color: var(--text); }
+    .inv .desc .formula { font-family: 'SF Mono', monospace; font-size: 12px; color: var(--muted); }
+    .inv .val { font-family: 'SF Mono', monospace; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+
+    .postings-log {
+      margin-top: 16px; max-height: 180px; overflow-y: auto;
+      border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+    }
+    .postings-log table { margin: 0; font-size: 12px; }
+    .postings-log th { position: sticky; top: 0; }
+    .postings-log td.amt-neg { color: var(--red); font-family: 'SF Mono', monospace; }
+    .postings-log td.amt-pos { color: var(--green); font-family: 'SF Mono', monospace; }
+    .postings-empty { padding: 16px; color: var(--muted); font-size: 13px; text-align: center; }
+
+    .drift-banner {
+      margin-top: 16px; padding: 12px 16px; border-radius: 8px; font-size: 13px;
+      border: 1px dashed var(--border); color: var(--muted);
+    }
+    .drift-banner.bad { border-color: var(--red); color: var(--red); background: #1a0f0f; }
+    .drift-banner.good { border-color: #275d38; color: var(--green); background: #0f1a12; }
+
+    @media (max-width: 720px) {
+      main { padding: 36px 20px; }
+      .ledger-grid { grid-template-columns: 1fr; }
+      .controls button.reset { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="site-nav"></div>
+<script src="../components/nav.js"></script>
+
+<main>
+  <h1>Lost Update &amp; the Ledger Invariant</h1>
+  <p class="subtitle">Part 1 · Schema and the invariant · <code>labs/postgres-concurrency</code></p>
+
+  <div class="callout info">
+    <div class="label">Mental model</div>
+    A ledger stores money <strong>twice</strong>. Once as an immutable list of debits and credits (<code>postings</code>), which is the truth. Once as a single mutable running total (<code>accounts.balance</code>), which is a cache for fast reads. Every concurrency bug in this lab lives in the gap between the two. The truth is hard to corrupt because each posting is its own row. The cache is easy to corrupt because concurrent writers fight over one number.
+  </div>
+
+  <section id="play">
+    <h2>Feel the Invariant</h2>
+    <p>Below is a tiny in-browser ledger. <code>alice</code> starts with 1,000,000 cents, <code>bob</code> with 0. Each transfer should move money <em>and</em> append two balanced postings. Watch both views. Then trigger a race and watch the cache lie.</p>
+
+    <div class="lab" id="ledger">
+      <div class="views-legend">
+        <span class="c-cache">cache = <code>accounts.balance</code> (mutable, fragile)</span>
+        <span class="c-truth">truth = <code>initial + Σ postings</code> (immutable, reliable)</span>
+      </div>
+
+      <div class="ledger-grid">
+        <div class="acct">
+          <h4>alice</h4>
+          <div class="row"><span class="lbl">cache balance</span><span class="num cache" id="alice-cache">10,000.00</span></div>
+          <div class="row"><span class="lbl">truth (init + Σpostings)</span><span class="num truth" id="alice-truth">10,000.00</span></div>
+        </div>
+        <div class="acct">
+          <h4>bob</h4>
+          <div class="row"><span class="lbl">cache balance</span><span class="num cache" id="bob-cache">0.00</span></div>
+          <div class="row"><span class="lbl">truth (init + Σpostings)</span><span class="num truth" id="bob-truth">0.00</span></div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button type="button" id="btn-correct">Correct transfer · 1.00 alice → bob</button>
+        <button type="button" id="btn-race" class="danger">2 concurrent transfers (naive race)</button>
+        <button type="button" id="btn-reset" class="reset">Reset</button>
+      </div>
+
+      <div class="invariants" id="invariants"></div>
+
+      <div class="drift-banner good" id="drift">No drift. Cache and truth agree on every account.</div>
+
+      <div class="postings-log">
+        <table>
+          <thead><tr><th>posting</th><th>transfer</th><th>account</th><th>amount</th></tr></thead>
+          <tbody id="postings-body"></tbody>
+        </table>
+        <div class="postings-empty" id="postings-empty">No postings yet. Run a transfer.</div>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <div class="label">What the race button simulates</div>
+      Two transfers run at the same time. Both read <code>balance = B</code>, both compute <code>B − 1</code> in application memory, both write <code>B − 1</code> back. The second write overwrites the first: one decrement is <strong>lost</strong>. The postings are unaffected (two separate INSERTs both land), so the truth still says <code>−2</code> while the cache only moved <code>−1</code>. That difference is a lost update, and it is exactly what <code>make break</code> will reproduce against real PostgreSQL.
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <section id="tables">
+    <h2>The Three Tables</h2>
+    <p>Money is stored in <strong>minor units</strong> (cents) as <code>bigint</code>. Never floats for money: <code>0.1 + 0.2 ≠ 0.3</code> in binary floating point, and a ledger that rounds is a ledger that leaks.</p>
+
+    <h3>accounts — the cache that gets corrupted</h3>
+    <pre><code><span class="kw">CREATE TABLE</span> accounts (
+  id               <span class="ty">text</span>        <span class="kw">PRIMARY KEY</span>,        <span class="cm">-- 'alice', 'bob'</span>
+  name             <span class="ty">text</span>        <span class="kw">NOT NULL</span>,
+  initial_balance  <span class="ty">bigint</span>      <span class="kw">NOT NULL</span>,           <span class="cm">-- set once at seed, never mutated</span>
+  balance          <span class="ty">bigint</span>      <span class="kw">NOT NULL</span>,           <span class="cm">-- the mutable cache (the victim)</span>
+  version          <span class="ty">int</span>         <span class="kw">NOT NULL DEFAULT</span> <span class="cn">0</span>, <span class="cm">-- seam for a later optimistic-lock demo</span>
+  created_at       <span class="ty">timestamptz</span> <span class="kw">NOT NULL DEFAULT</span> now()
+);</code></pre>
+
+    <h3>transfers — one row per transfer intent</h3>
+    <pre><code><span class="kw">CREATE TABLE</span> transfers (
+  id               <span class="ty">uuid</span>        <span class="kw">PRIMARY KEY DEFAULT</span> gen_random_uuid(),
+  from_account     <span class="ty">text</span>        <span class="kw">NOT NULL REFERENCES</span> accounts(id),
+  to_account       <span class="ty">text</span>        <span class="kw">NOT NULL REFERENCES</span> accounts(id),
+  amount           <span class="ty">bigint</span>      <span class="kw">NOT NULL CHECK</span> (amount &gt; <span class="cn">0</span>),
+  idempotency_key  <span class="ty">text</span>        <span class="kw">UNIQUE</span>,                 <span class="cm">-- seam for a later idempotency slice</span>
+  created_at       <span class="ty">timestamptz</span> <span class="kw">NOT NULL DEFAULT</span> now()
+);</code></pre>
+
+    <h3>postings — the immutable double-entry truth</h3>
+    <pre><code><span class="kw">CREATE TABLE</span> postings (
+  id           <span class="ty">bigserial</span>   <span class="kw">PRIMARY KEY</span>,
+  transfer_id  <span class="ty">uuid</span>        <span class="kw">NOT NULL REFERENCES</span> transfers(id),
+  account_id   <span class="ty">text</span>        <span class="kw">NOT NULL REFERENCES</span> accounts(id),
+  amount       <span class="ty">bigint</span>      <span class="kw">NOT NULL</span>,          <span class="cm">-- signed: debit negative, credit positive</span>
+  created_at   <span class="ty">timestamptz</span> <span class="kw">NOT NULL DEFAULT</span> now()
+);</code></pre>
+    <p>Each transfer writes <strong>two</strong> postings: <code>−amount</code> on the source, <code>+amount</code> on the destination. They sum to zero. That is double-entry bookkeeping: money is never created or destroyed, only moved.</p>
+  </section>
+
+  <hr class="divider" />
+
+  <section id="invariant-defs">
+    <h2>The Invariants We Will Assert</h2>
+    <table>
+      <tr><th>#</th><th>Invariant</th><th>Holds when?</th></tr>
+      <tr>
+        <td><strong>I1</strong></td>
+        <td>For every account: <code>balance == initial_balance + Σ postings.amount</code></td>
+        <td>Breaks under naive concurrent writes. This is the lost-update detector.</td>
+      </tr>
+      <tr>
+        <td><strong>I2</strong></td>
+        <td>For every transfer: <code>Σ postings.amount WHERE transfer_id = t == 0</code></td>
+        <td>Always holds. Each posting is an independent INSERT; concurrency cannot unbalance a pair.</td>
+      </tr>
+      <tr>
+        <td><strong>I3</strong></td>
+        <td>System-wide: <code>Σ accounts.balance == Σ accounts.initial_balance</code></td>
+        <td>Breaks under naive writes. Money conservation across the whole ledger.</td>
+      </tr>
+    </table>
+    <div class="callout success">
+      <div class="label">Why this design is self-checking</div>
+      Because <code>initial_balance</code> is frozen at seed time, the database carries its own ground truth. No external bookkeeping is needed to know whether the cache lied: <code>make break</code> just compares <code>balance</code> against <code>initial_balance + Σ postings</code> and prints the drift.
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <section id="choices">
+    <h2>Design Choices Worth Noting</h2>
+    <table>
+      <tr><th>Choice</th><th>Why</th></tr>
+      <tr><td><code>bigint</code> cents, never float</td><td>Floating point cannot represent most decimal money values exactly. Integers in minor units are exact and orderable.</td></tr>
+      <tr><td><code>initial_balance</code> frozen</td><td>Gives the invariant a fixed reference point so the DB is self-describing. The checker needs nothing external.</td></tr>
+      <tr><td><code>gen_random_uuid()</code></td><td>Built into PostgreSQL core since v13. No <code>pgcrypto</code> extension required.</td></tr>
+      <tr><td><code>version</code> column (unused now)</td><td>The seam for a later optimistic-locking variant (compare-and-set on <code>version</code>). Costs nothing to include up front.</td></tr>
+      <tr><td><code>UNIQUE (idempotency_key)</code></td><td>The seam for a later idempotency slice: turn duplicate submissions into a DB-enforced invariant.</td></tr>
+      <tr><td>Signed posting amounts</td><td>One column expresses both debit and credit. A transfer is two rows summing to zero, which makes I2 trivial to check.</td></tr>
+    </table>
+  </section>
+
+  <hr class="divider" />
+
+  <section id="next">
+    <h2>What Comes Next</h2>
+    <p>These four files are everything Part 1 produces:</p>
+    <pre><code>labs/postgres-concurrency/migrations/0001_accounts.sql
+labs/postgres-concurrency/migrations/0002_transfers.sql
+labs/postgres-concurrency/migrations/0003_postings.sql
+labs/postgres-concurrency/scripts/seed.sql        <span class="cm">-- alice: 1,000,000c   bob: 0c</span></code></pre>
+    <p><strong>Part 2</strong> wraps these in a pinned, healthchecked PostgreSQL container that runs identically on Docker Desktop and OrbStack, with <code>make up</code> to bring it live. The simulation above is a model; Part 4 reproduces the same drift against real PostgreSQL with concurrent Go workers.</p>
+  </section>
+
+  <script>
+    const ALICE_INIT = 1000000; // cents
+    const BOB_INIT = 0;
+
+    const state = {
+      cache: { alice: ALICE_INIT, bob: BOB_INIT },
+      initial: { alice: ALICE_INIT, bob: BOB_INIT },
+      postings: [],   // {pid, tid, account, amount}
+      pid: 0,
+      tid: 0,
+    };
+
+    const fmt = (cents) =>
+      (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    function truth(account) {
+      const sum = state.postings
+        .filter((p) => p.account === account)
+        .reduce((acc, p) => acc + p.amount, 0);
+      return state.initial[account] + sum;
+    }
+
+    function correctTransfer(amount) {
+      state.tid += 1;
+      const tid = 'T' + state.tid;
+      // truth: two balanced postings
+      state.postings.push({ pid: ++state.pid, tid, account: 'alice', amount: -amount });
+      state.postings.push({ pid: ++state.pid, tid, account: 'bob', amount: amount });
+      // cache: applied atomically, both sides move
+      state.cache.alice -= amount;
+      state.cache.bob += amount;
+      render();
+    }
+
+    function naiveRace(amount) {
+      // Two concurrent transfers. Postings for BOTH always land (independent INSERTs).
+      const aliceStart = state.cache.alice;
+      const bobStart = state.cache.bob;
+      for (let i = 0; i < 2; i++) {
+        state.tid += 1;
+        const tid = 'T' + state.tid;
+        state.postings.push({ pid: ++state.pid, tid, account: 'alice', amount: -amount });
+        state.postings.push({ pid: ++state.pid, tid, account: 'bob', amount: amount });
+      }
+      // Lost update: both transfers read the SAME starting balance and wrote back
+      // start - amount. The second write clobbers the first. Net cache move = one amount,
+      // even though two transfers (two postings each) were recorded.
+      state.cache.alice = aliceStart - amount;
+      state.cache.bob = bobStart + amount;
+      render();
+    }
+
+    function reset() {
+      state.cache = { alice: ALICE_INIT, bob: BOB_INIT };
+      state.postings = [];
+      state.pid = 0;
+      state.tid = 0;
+      render();
+    }
+
+    function setNum(id, cents, matches) {
+      const el = document.getElementById(id);
+      el.textContent = fmt(cents);
+      el.classList.toggle('match', matches === true);
+      el.classList.toggle('mismatch', matches === false);
+    }
+
+    function render() {
+      const aliceCache = state.cache.alice, aliceTruth = truth('alice');
+      const bobCache = state.cache.bob, bobTruth = truth('bob');
+      const aliceOk = aliceCache === aliceTruth;
+      const bobOk = bobCache === bobTruth;
+
+      setNum('alice-cache', aliceCache, aliceOk);
+      setNum('alice-truth', aliceTruth, aliceOk);
+      setNum('bob-cache', bobCache, bobOk);
+      setNum('bob-truth', bobTruth, bobOk);
+
+      // Invariants
+      const i1ok = aliceOk && bobOk;
+      const i2ok = true; // postings always inserted in balanced pairs
+      const sumCache = aliceCache + bobCache;
+      const sumInit = state.initial.alice + state.initial.bob;
+      const i3ok = sumCache === sumInit;
+
+      const invs = [
+        {
+          ok: i1ok, name: 'I1 · cache equals truth',
+          formula: 'balance == initial + Σ postings',
+          val: `alice ${fmt(aliceCache)} vs ${fmt(aliceTruth)} · bob ${fmt(bobCache)} vs ${fmt(bobTruth)}`,
+        },
+        {
+          ok: i2ok, name: 'I2 · transfers balance',
+          formula: 'Σ postings per transfer == 0',
+          val: `${state.tid} transfer(s), all pairs sum to 0`,
+        },
+        {
+          ok: i3ok, name: 'I3 · money conserved',
+          formula: 'Σ balance == Σ initial',
+          val: `Σ cache ${fmt(sumCache)} vs Σ initial ${fmt(sumInit)}`,
+        },
+      ];
+
+      const wrap = document.getElementById('invariants');
+      wrap.innerHTML = invs.map((iv) => `
+        <div class="inv ${iv.ok ? 'ok' : 'bad'}">
+          <div class="badge">${iv.ok ? '✅' : '❌'}</div>
+          <div class="desc"><span class="name">${iv.name}</span><br><span class="formula">${iv.formula}</span></div>
+          <div class="val">${iv.val}</div>
+        </div>`).join('');
+
+      // Drift banner
+      const drift = (aliceTruth - aliceCache) + (bobCache - bobTruth);
+      const banner = document.getElementById('drift');
+      if (i1ok && i3ok) {
+        banner.className = 'drift-banner good';
+        banner.textContent = 'No drift. Cache and truth agree on every account.';
+      } else {
+        const created = sumCache - sumInit;
+        banner.className = 'drift-banner bad';
+        banner.textContent =
+          `Lost update detected. Cache disagrees with the postings. ` +
+          `System-wide the cache now shows ${created > 0 ? '+' : ''}${fmt(created)} that the postings never authorised. The truth is intact; the cache lied.`;
+      }
+
+      // Postings log
+      const body = document.getElementById('postings-body');
+      const empty = document.getElementById('postings-empty');
+      if (state.postings.length === 0) {
+        body.innerHTML = '';
+        empty.style.display = 'block';
+      } else {
+        empty.style.display = 'none';
+        body.innerHTML = state.postings.slice().reverse().map((p) => `
+          <tr>
+            <td>#${p.pid}</td>
+            <td>${p.tid}</td>
+            <td>${p.account}</td>
+            <td class="${p.amount < 0 ? 'amt-neg' : 'amt-pos'}">${p.amount > 0 ? '+' : ''}${fmt(p.amount)}</td>
+          </tr>`).join('');
+      }
+    }
+
+    document.getElementById('btn-correct').addEventListener('click', () => correctTransfer(100));
+    document.getElementById('btn-race').addEventListener('click', () => naiveRace(100));
+    document.getElementById('btn-reset').addEventListener('click', reset);
+    render();
+  </script>
+</main>
+</body>
+</html>

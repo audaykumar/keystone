@@ -213,8 +213,16 @@ Later concepts may add FX, an outbox, Kafka events, reconciliation, caching, and
 Completed documentation:
 
 - `docs/postgres/overview.html`: standalone PostgreSQL overview and request-flow visual
+- `docs/postgres/lost-update.html`: interactive lost-update and ledger-invariant explainer (Part 1 of the concurrency lab). Not yet linked from `docs/index.html`.
 - `docs/toolbox/overview.html`: systems-tool mental models, comparisons, workload selector, and clickable payment architecture
 - `docs/index.html`: topic landing page with links to current explainers
+
+In-progress lab: `labs/postgres-concurrency/` reproduces a lost update on a money
+balance and fixes it four ways (naive, locked, atomic, serializable). Schema
+migrations, seed, `compose.yaml`, `Makefile`, and the Go driver are built. `make up`
+is verified (postgres healthy, migrations applied, seed loaded). `make break` and
+`make test` have not been run yet. See `labs/postgres-concurrency/README.md` for the
+full status and the next-session checklist.
 
 The toolbox architecture distinguishes synchronous requests, Kafka streams, queue delivery, workflows, storage writes, replication/CDC, and metrics. Components and connections expose compact popovers plus detailed explanations.
 
@@ -229,19 +237,13 @@ docs/       Durable HTML learning pages
 
 ## Next Session
 
-Start PostgreSQL learning by building and observing behavior, not by adding more overview prose.
+The `labs/postgres-concurrency/` slice is built and `make up` is verified. Continue
+by running and observing it, not by adding prose. Full checklist in
+`labs/postgres-concurrency/README.md`. Short form:
 
-Initial lab or thin project slice:
-
-1. Create a Docker Compose environment containing PostgreSQL and the smallest useful application or driver.
-2. Add versioned migrations for accounts, transfers, and balanced postings.
-3. Add deterministic scripts or fixtures for scenario data.
-4. Write concurrent transfer code.
-5. Reproduce one correctness failure, such as a lost update or write skew.
-6. Observe transactions, locks, isolation behavior, and resulting rows.
-7. Fix the failure with the appropriate transaction boundary, locking, constraint, or isolation level.
-8. Provide `make up`, `make down`, `make reset`, `make test`, `make break`, and `make logs`.
-9. Verify `make down` removes containers, networks, volumes, and generated runtime artifacts.
-10. Capture commands, predictions, observations, and conclusions in the project or lab README, then teach the result back through HTML.
-
-Choose between `projects/ledger/` and a focused `labs/postgres-concurrency/` after inspecting the repository. Prefer the ledger when the experiment benefits from real money invariants; prefer a lab when isolating a PostgreSQL mechanism makes the behavior clearer.
+1. `make break` (build the driver image, watch naive mode violate I1/I3; record drift and tx/s).
+2. `make test` (confirm the locked fix holds at zero drift).
+3. Run and compare `atomic` and `serializable`: tx/s, retries, failures, contention trade-off.
+4. During a naive run, inspect `pg_locks` and `pg_stat_activity` via `make psql` to see why the read is unguarded.
+5. Verify `make down` leaves no containers, networks, volumes, or built images behind.
+6. Fold real observations into `docs/postgres/lost-update.html`, then link it from `docs/index.html`.
