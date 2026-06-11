@@ -217,11 +217,11 @@ Completed documentation:
 - `docs/toolbox/overview.html`: systems-tool mental models, comparisons, workload selector, and clickable payment architecture
 - `docs/index.html`: topic landing page with links to current explainers
 
-In-progress lab: `labs/postgres-concurrency/` reproduces a lost update on a money
+In-progress lab: `labs/postgres/concurrency/` reproduces a lost update on a money
 balance and fixes it four ways (naive, locked, atomic, serializable). Schema
 migrations, seed, `compose.yaml`, `Makefile`, and the Go driver are built. `make up`
 is verified (postgres healthy, migrations applied, seed loaded). `make break` and
-`make test` have not been run yet. See `labs/postgres-concurrency/README.md` for the
+`make test` have not been run yet. See `labs/postgres/concurrency/README.md` for the
 full status and the next-session checklist.
 
 The toolbox architecture distinguishes synchronous requests, Kafka streams, queue delivery, workflows, storage writes, replication/CDC, and metrics. Components and connections expose compact popovers plus detailed explanations.
@@ -237,9 +237,9 @@ docs/       Durable HTML learning pages
 
 ## Next Session
 
-The `labs/postgres-concurrency/` slice is built and `make up` is verified. Continue
+The `labs/postgres/concurrency/` slice is built and `make up` is verified. Continue
 by running and observing it, not by adding prose. Full checklist in
-`labs/postgres-concurrency/README.md`. Short form:
+`labs/postgres/concurrency/README.md`. Short form:
 
 1. `make break` (build the driver image, watch naive mode violate I1/I3; record drift and tx/s).
 2. `make test` (confirm the locked fix holds at zero drift).

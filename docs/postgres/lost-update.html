@@ -176,7 +176,7 @@
 
 <main>
   <h1>Lost Update &amp; the Ledger Invariant</h1>
-  <p class="subtitle">Part 1 · Schema and the invariant · <code>labs/postgres-concurrency</code></p>
+  <p class="subtitle">Part 1 · Schema and the invariant · <code>labs/postgres/concurrency</code></p>
 
   <div class="callout info">
     <div class="label">Mental model</div>
@@ -316,10 +316,10 @@
   <section id="next">
     <h2>What Comes Next</h2>
     <p>These four files are everything Part 1 produces:</p>
-    <pre><code>labs/postgres-concurrency/migrations/0001_accounts.sql
-labs/postgres-concurrency/migrations/0002_transfers.sql
-labs/postgres-concurrency/migrations/0003_postings.sql
-labs/postgres-concurrency/scripts/seed.sql        <span class="cm">-- alice: 1,000,000c   bob: 0c</span></code></pre>
+    <pre><code>labs/postgres/concurrency/migrations/0001_accounts.sql
+labs/postgres/concurrency/migrations/0002_transfers.sql
+labs/postgres/concurrency/migrations/0003_postings.sql
+labs/postgres/concurrency/scripts/seed.sql        <span class="cm">-- alice: 1,000,000c   bob: 0c</span></code></pre>
     <p><strong>Part 2</strong> wraps these in a pinned, healthchecked PostgreSQL container that runs identically on Docker Desktop and OrbStack, with <code>make up</code> to bring it live. The simulation above is a model; Part 4 reproduces the same drift against real PostgreSQL with concurrent Go workers.</p>
   </section>
 
