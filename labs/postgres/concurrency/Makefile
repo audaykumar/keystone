@@ -1,15 +1,15 @@
 COMPOSE := docker compose
 PG_USER ?= lab
-PG_DB   ?= ledger
+PG_DB   ?= warehouse
 
-.PHONY: up down reset migrate seed build test break load logs psql
+.PHONY: up down reset migrate seed build test break load serializable logs psql
 
 up: ## Start postgres, run migrations and seed
 	$(COMPOSE) up -d --wait postgres
 	$(MAKE) migrate
 	$(MAKE) seed
 	@echo ""
-	@echo "ready. try:  make break   (watch the cache lie)"
+	@echo "ready. try:  make break   (watch available stock drift)"
 	@echo "        then make test    (watch a fix hold)"
 
 migrate: ## Apply versioned migrations in order
@@ -25,14 +25,17 @@ seed: ## Load deterministic seed data
 build: ## Build the Go driver image
 	$(COMPOSE) build driver
 
-break: build ## Naive mode: reproduce the lost update (expected to violate the invariant)
+break: build ## Naive mode: reproduce lost stock reservations (expected to violate the invariant)
 	-$(COMPOSE) run --rm driver -mode=naive -workers=8 -iterations=250 -check
 
-test: build ## Locked mode: the fix must hold the invariant
+test: build ## Locked mode: reservations must preserve the invariant
 	$(COMPOSE) run --rm driver -mode=locked -workers=8 -iterations=250 -check
 
 load: build ## Generate representative traffic with the atomic fix
 	$(COMPOSE) run --rm driver -mode=atomic -workers=16 -iterations=1000
+
+serializable: build ## Run with serializable isolation and bounded retries
+	$(COMPOSE) run --rm driver -mode=serializable -workers=8 -iterations=250 -max-retries=5 -check
 
 logs: ## Follow postgres logs
 	$(COMPOSE) logs -f postgres

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math/rand/v2"
 	"os"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,29 +16,31 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+var errInsufficientStock = errors.New("insufficient stock")
+
 type config struct {
 	mode       string
 	workers    int
 	iterations int
-	amount     int64
+	quantity   int64
 	jitter     time.Duration
 	check      bool
-	from       string
-	to         string
+	product    string
+	maxRetries int
 }
 
 func main() {
 	var cfg config
-	flag.StringVar(&cfg.mode, "mode", "naive", "transfer mode: naive|locked|atomic|serializable")
+	flag.StringVar(&cfg.mode, "mode", "naive", "reservation mode: naive|locked|atomic|serializable")
 	flag.IntVar(&cfg.workers, "workers", 8, "concurrent workers")
-	flag.IntVar(&cfg.iterations, "iterations", 200, "transfers per worker")
-	amount := flag.Int64("amount", 1, "transfer amount in cents")
-	jitterMs := flag.Int("jitter", 2, "ms sleep between read and write (widens the race window in naive/locked/serializable)")
-	flag.BoolVar(&cfg.check, "check", false, "exit non-zero if invariant I1 is violated")
-	flag.StringVar(&cfg.from, "from", "alice", "source account")
-	flag.StringVar(&cfg.to, "to", "bob", "destination account")
+	flag.IntVar(&cfg.iterations, "iterations", 200, "reservations per worker")
+	quantity := flag.Int64("quantity", 1, "units reserved per order")
+	jitterMs := flag.Int("jitter", 2, "ms sleep between read and write")
+	flag.BoolVar(&cfg.check, "check", false, "exit non-zero if a stock invariant is violated")
+	flag.StringVar(&cfg.product, "product", "widget", "product to reserve")
+	flag.IntVar(&cfg.maxRetries, "max-retries", 5, "maximum retries after a serialization failure")
 	flag.Parse()
-	cfg.amount = *amount
+	cfg.quantity = *quantity
 	cfg.jitter = time.Duration(*jitterMs) * time.Millisecond
 
 	ctx := context.Background()
@@ -58,21 +60,24 @@ func main() {
 	}
 
 	total := cfg.workers * cfg.iterations
-	fmt.Printf("mode=%s workers=%d iterations=%d total=%d amount=%dc jitter=%s\n",
-		cfg.mode, cfg.workers, cfg.iterations, total, cfg.amount, cfg.jitter)
+	fmt.Printf("mode=%s product=%s workers=%d iterations=%d total=%d quantity=%d jitter=%s\n",
+		cfg.mode, cfg.product, cfg.workers, cfg.iterations, total, cfg.quantity, cfg.jitter)
 
 	start := time.Now()
-	var committed, failed, retries int64
+	var committed, failed, retries, insufficient int64
 	var wg sync.WaitGroup
 	for w := 0; w < cfg.workers; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for i := 0; i < cfg.iterations; i++ {
-				r, err := doTransfer(ctx, pool, cfg)
+				r, err := reserve(ctx, pool, cfg)
 				atomic.AddInt64(&retries, int64(r))
 				if err != nil {
 					atomic.AddInt64(&failed, 1)
+					if errors.Is(err, errInsufficientStock) {
+						atomic.AddInt64(&insufficient, 1)
+					}
 					continue
 				}
 				atomic.AddInt64(&committed, 1)
@@ -82,11 +87,11 @@ func main() {
 	wg.Wait()
 	elapsed := time.Since(start)
 
-	fmt.Printf("committed=%d failed=%d retries=%d elapsed=%s (%.0f tx/s)\n\n",
-		committed, failed, retries, elapsed.Round(time.Millisecond),
+	fmt.Printf("committed=%d failed=%d insufficient=%d retries=%d elapsed=%s (%.0f reservations/s)\n\n",
+		committed, failed, insufficient, retries, elapsed.Round(time.Millisecond),
 		float64(committed)/elapsed.Seconds())
 
-	ok, err := checkInvariant(ctx, pool)
+	ok, err := checkInvariants(ctx, pool)
 	if err != nil {
 		fatalf("check: %v", err)
 	}
@@ -95,110 +100,94 @@ func main() {
 	}
 }
 
-// doTransfer dispatches to the chosen strategy. Returns the number of retries
-// performed (serializable mode) and a terminal error if the transfer failed.
-func doTransfer(ctx context.Context, pool *pgxpool.Pool, cfg config) (int, error) {
+func reserve(ctx context.Context, pool *pgxpool.Pool, cfg config) (int, error) {
 	switch cfg.mode {
 	case "naive":
-		return 0, transferReadModifyWrite(ctx, pool, cfg, false)
+		return 0, reserveReadModifyWrite(ctx, pool, cfg, false)
 	case "locked":
-		return 0, transferReadModifyWrite(ctx, pool, cfg, true)
+		return 0, reserveReadModifyWrite(ctx, pool, cfg, true)
 	case "atomic":
-		return 0, transferAtomic(ctx, pool, cfg)
+		return 0, reserveAtomic(ctx, pool, cfg)
 	case "serializable":
-		return transferSerializable(ctx, pool, cfg)
+		return reserveSerializable(ctx, pool, cfg)
 	default:
 		return 0, fmt.Errorf("unknown mode %q", cfg.mode)
 	}
 }
 
-// transferReadModifyWrite reads both balances, computes the new values in
-// application memory, then writes them back. This is the classic lost-update
-// shape. With forUpdate=false (naive) concurrent transactions read the same
-// starting balance and clobber each other. With forUpdate=true the SELECT takes
-// a row lock, serializing conflicting writers so no update is lost.
-func transferReadModifyWrite(ctx context.Context, pool *pgxpool.Pool, cfg config, forUpdate bool) error {
+// reserveReadModifyWrite reads stock, validates it, computes the new value in
+// application memory, then writes it back. Without FOR UPDATE, concurrent
+// transactions can read the same value and overwrite each other's decrement.
+func reserveReadModifyWrite(ctx context.Context, pool *pgxpool.Pool, cfg config, forUpdate bool) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	lockClause := ""
+	query := "SELECT available_stock FROM products WHERE id = $1"
 	if forUpdate {
-		lockClause = " FOR UPDATE"
+		query += " FOR UPDATE"
 	}
 
-	// Lock/read in a stable id order so concurrent transfers cannot deadlock.
-	ids := []string{cfg.from, cfg.to}
-	sort.Strings(ids)
-	bal := map[string]int64{}
-	for _, id := range ids {
-		var b int64
-		if err := tx.QueryRow(ctx, "SELECT balance FROM accounts WHERE id = $1"+lockClause, id).Scan(&b); err != nil {
-			return err
-		}
-		bal[id] = b
+	var available int64
+	if err := tx.QueryRow(ctx, query, cfg.product).Scan(&available); err != nil {
+		return err
+	}
+	if available < cfg.quantity {
+		return errInsufficientStock
 	}
 
-	// Widen the window between read and write so the race is reliable to observe.
 	if cfg.jitter > 0 {
 		time.Sleep(cfg.jitter)
 	}
 
 	if _, err := tx.Exec(ctx,
-		"UPDATE accounts SET balance = $1, version = version + 1 WHERE id = $2",
-		bal[cfg.from]-cfg.amount, cfg.from); err != nil {
+		"UPDATE products SET available_stock = $1, version = version + 1 WHERE id = $2",
+		available-cfg.quantity, cfg.product); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx,
-		"UPDATE accounts SET balance = $1, version = version + 1 WHERE id = $2",
-		bal[cfg.to]+cfg.amount, cfg.to); err != nil {
-		return err
-	}
-
-	if err := writePostings(ctx, tx, cfg); err != nil {
+	if err := writeReservation(ctx, tx, cfg); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
-// transferAtomic moves the arithmetic into the UPDATE statement itself. Each
-// UPDATE takes a row lock and reads the current value under that lock, so there
-// is no stale application-side value to lose. Correct without an explicit
-// SELECT ... FOR UPDATE.
-func transferAtomic(ctx context.Context, pool *pgxpool.Pool, cfg config) error {
+// reserveAtomic combines validation and decrement in one statement. PostgreSQL
+// evaluates the predicate against the current row while holding its update lock.
+func reserveAtomic(ctx context.Context, pool *pgxpool.Pool, cfg config) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	// Apply in stable id order to avoid deadlocks under mixed-direction load.
-	type delta struct {
-		id  string
-		amt int64
+	var remaining int64
+	err = tx.QueryRow(ctx, `
+		UPDATE products
+		SET available_stock = available_stock - $1,
+		    version = version + 1
+		WHERE id = $2
+		  AND available_stock >= $1
+		RETURNING available_stock`,
+		cfg.quantity, cfg.product).Scan(&remaining)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return errInsufficientStock
 	}
-	deltas := []delta{{cfg.from, -cfg.amount}, {cfg.to, cfg.amount}}
-	sort.Slice(deltas, func(i, j int) bool { return deltas[i].id < deltas[j].id })
-	for _, d := range deltas {
-		if _, err := tx.Exec(ctx,
-			"UPDATE accounts SET balance = balance + $1, version = version + 1 WHERE id = $2",
-			d.amt, d.id); err != nil {
-			return err
-		}
+	if err != nil {
+		return err
 	}
 
-	if err := writePostings(ctx, tx, cfg); err != nil {
+	if err := writeReservation(ctx, tx, cfg); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
-// transferSerializable uses the naive read-modify-write shape but under
-// SERIALIZABLE isolation. PostgreSQL detects the read/write dependency cycle and
-// aborts one transaction with SQLSTATE 40001; the application must retry.
-func transferSerializable(ctx context.Context, pool *pgxpool.Pool, cfg config) (int, error) {
+// reserveSerializable keeps the naive read-modify-write shape but asks
+// PostgreSQL to reject unsafe executions. Retries are bounded because heavy
+// contention can otherwise keep a request retrying indefinitely.
+func reserveSerializable(ctx context.Context, pool *pgxpool.Pool, cfg config) (int, error) {
 	retries := 0
 	for {
 		err := func() error {
@@ -208,30 +197,24 @@ func transferSerializable(ctx context.Context, pool *pgxpool.Pool, cfg config) (
 			}
 			defer tx.Rollback(ctx)
 
-			ids := []string{cfg.from, cfg.to}
-			sort.Strings(ids)
-			bal := map[string]int64{}
-			for _, id := range ids {
-				var b int64
-				if err := tx.QueryRow(ctx, "SELECT balance FROM accounts WHERE id = $1", id).Scan(&b); err != nil {
-					return err
-				}
-				bal[id] = b
+			var available int64
+			if err := tx.QueryRow(ctx,
+				"SELECT available_stock FROM products WHERE id = $1",
+				cfg.product).Scan(&available); err != nil {
+				return err
+			}
+			if available < cfg.quantity {
+				return errInsufficientStock
 			}
 			if cfg.jitter > 0 {
 				time.Sleep(cfg.jitter)
 			}
 			if _, err := tx.Exec(ctx,
-				"UPDATE accounts SET balance = $1, version = version + 1 WHERE id = $2",
-				bal[cfg.from]-cfg.amount, cfg.from); err != nil {
+				"UPDATE products SET available_stock = $1, version = version + 1 WHERE id = $2",
+				available-cfg.quantity, cfg.product); err != nil {
 				return err
 			}
-			if _, err := tx.Exec(ctx,
-				"UPDATE accounts SET balance = $1, version = version + 1 WHERE id = $2",
-				bal[cfg.to]+cfg.amount, cfg.to); err != nil {
-				return err
-			}
-			if err := writePostings(ctx, tx, cfg); err != nil {
+			if err := writeReservation(ctx, tx, cfg); err != nil {
 				return err
 			}
 			return tx.Commit(ctx)
@@ -240,81 +223,81 @@ func transferSerializable(ctx context.Context, pool *pgxpool.Pool, cfg config) (
 		if err == nil {
 			return retries, nil
 		}
-		if isSerializationFailure(err) {
-			retries++
-			continue
+		if !isSerializationFailure(err) || retries >= cfg.maxRetries {
+			return retries, err
 		}
-		return retries, err
+
+		retries++
+		backoff := time.Duration(1<<min(retries, 6)) * time.Millisecond
+		time.Sleep(backoff + time.Duration(rand.IntN(4))*time.Millisecond)
 	}
 }
 
-// writePostings records the transfer intent and its two balanced postings.
-// These are independent INSERTs, so concurrency never unbalances them: the
-// postings are always the trustworthy double-entry truth.
-func writePostings(ctx context.Context, tx pgx.Tx, cfg config) error {
-	var tid string
+func writeReservation(ctx context.Context, tx pgx.Tx, cfg config) error {
+	var orderID string
 	if err := tx.QueryRow(ctx,
-		"INSERT INTO transfers (from_account, to_account, amount) VALUES ($1, $2, $3) RETURNING id",
-		cfg.from, cfg.to, cfg.amount).Scan(&tid); err != nil {
+		"INSERT INTO orders (product_id, quantity) VALUES ($1, $2) RETURNING id",
+		cfg.product, cfg.quantity).Scan(&orderID); err != nil {
 		return err
 	}
-	_, err := tx.Exec(ctx,
-		"INSERT INTO postings (transfer_id, account_id, amount) VALUES ($1, $2, $3), ($1, $4, $5)",
-		tid, cfg.from, -cfg.amount, cfg.to, cfg.amount)
+	_, err := tx.Exec(ctx, `
+		INSERT INTO stock_movements (order_id, product_id, quantity_change)
+		VALUES ($1, $2, $3)`,
+		orderID, cfg.product, -cfg.quantity)
 	return err
 }
 
 func resetScenario(ctx context.Context, pool *pgxpool.Pool) error {
-	_, err := pool.Exec(ctx,
-		"TRUNCATE postings, transfers RESTART IDENTITY; UPDATE accounts SET balance = initial_balance, version = 0;")
+	_, err := pool.Exec(ctx, `
+		TRUNCATE stock_movements, orders RESTART IDENTITY;
+		UPDATE products SET available_stock = initial_stock, version = 0;`)
 	return err
 }
 
-// checkInvariant verifies I1 (cache equals truth) per account and I3 (money
-// conserved system-wide), printing a drift table. Returns true if both hold.
-func checkInvariant(ctx context.Context, pool *pgxpool.Pool) (bool, error) {
+// I1: available stock equals initial stock plus immutable movements.
+// I2: available stock never becomes negative.
+func checkInvariants(ctx context.Context, pool *pgxpool.Pool) (bool, error) {
 	rows, err := pool.Query(ctx, `
-		SELECT a.id,
-		       a.balance,
-		       a.initial_balance + COALESCE(p.s, 0) AS truth
-		FROM accounts a
+		SELECT p.id,
+		       p.available_stock,
+		       p.initial_stock + COALESCE(m.quantity_change, 0) AS expected_stock
+		FROM products p
 		LEFT JOIN (
-			SELECT account_id, SUM(amount) AS s FROM postings GROUP BY account_id
-		) p ON p.account_id = a.id
-		ORDER BY a.id;`)
+			SELECT product_id, SUM(quantity_change) AS quantity_change
+			FROM stock_movements
+			GROUP BY product_id
+		) m ON m.product_id = p.id
+		ORDER BY p.id;`)
 	if err != nil {
 		return false, err
 	}
 	defer rows.Close()
 
-	fmt.Printf("%-10s %16s %16s %12s\n", "account", "cache(balance)", "truth(init+Σ)", "drift")
-	fmt.Println("---------------------------------------------------------------")
+	fmt.Printf("%-14s %18s %18s %12s\n", "product", "available(stock)", "expected(init+sum)", "drift")
+	fmt.Println("------------------------------------------------------------------")
 	ok := true
-	var sumCache, sumTruth int64
 	for rows.Next() {
 		var id string
-		var cache, truth int64
-		if err := rows.Scan(&id, &cache, &truth); err != nil {
+		var available, expected int64
+		if err := rows.Scan(&id, &available, &expected); err != nil {
 			return false, err
 		}
-		drift := cache - truth
-		if drift != 0 {
+		drift := available - expected
+		rowOK := drift == 0 && available >= 0
+		if !rowOK {
 			ok = false
 		}
-		sumCache += cache
-		sumTruth += truth
-		fmt.Printf("%-10s %16d %16d %12d %s\n", id, cache, truth, drift, mark(drift == 0))
+		fmt.Printf("%-14s %18d %18d %12d %s\n",
+			id, available, expected, drift, mark(rowOK))
 	}
 	if err := rows.Err(); err != nil {
 		return false, err
 	}
-	fmt.Println("---------------------------------------------------------------")
-	fmt.Printf("%-10s %16d %16d %12d %s\n", "TOTAL", sumCache, sumTruth, sumCache-sumTruth, mark(sumCache == sumTruth))
 	fmt.Println()
 	if ok {
-		fmt.Println("I1 + I3 hold: the cache agrees with the postings. No money created or destroyed.")
+		fmt.Println("I1 + I2 hold: available stock matches reservation history and is non-negative.")
 	} else {
-		fmt.Printf("LOST UPDATE: the cache disagrees with the postings by %d cents. Money was created or destroyed in the cache.\n", sumCache-sumTruth)
+		fmt.Println("LOST UPDATE: available stock disagrees with immutable stock movements.")
 	}
 	return ok, nil
 }
@@ -323,13 +306,12 @@ func mark(ok bool) string {
 	if ok {
 		return "OK"
 	}
-	return "<< DRIFT"
+	return "<< VIOLATION"
 }
 
 func isSerializationFailure(err error) bool {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
-		// 40001 serialization_failure, 40P01 deadlock_detected
 		return pgErr.Code == "40001" || pgErr.Code == "40P01"
 	}
 	return false

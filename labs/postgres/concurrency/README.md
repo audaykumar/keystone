@@ -1,84 +1,134 @@
-# Lab: postgres-concurrency
+# Lab: PostgreSQL concurrency
 
-Reproduce a **lost update** on a money balance under concurrent transfers, then fix
-it three ways and compare. Isolates one PostgreSQL mechanism: what protects a
-read-modify-write against concurrent writers.
+Reproduce a lost update while reserving warehouse stock, then compare three
+correct fixes. The lab isolates one question: what protects a read, validation,
+and write when many transactions target the same row?
 
-## The invariant
+## Scenario
 
-Money is stored twice:
+A warehouse stores stock in two forms:
 
-- `postings` is the immutable double-entry truth (each posting is its own INSERT).
-- `accounts.balance` is a mutable cache for fast reads (the fragile one).
+- `stock_movements` is the immutable reservation history.
+- `products.available_stock` is the mutable value used for fast availability checks.
+
+Each successful order appends one negative stock movement and decrements
+`available_stock`.
 
 | # | Invariant | Breaks under |
 |---|---|---|
-| I1 | `balance == initial_balance + Σ postings.amount` per account | naive concurrent writes |
-| I2 | `Σ postings.amount == 0` per transfer | never (independent INSERTs) |
-| I3 | `Σ balance == Σ initial_balance` system-wide | naive concurrent writes |
+| I1 | `available_stock == initial_stock + SUM(stock_movements.quantity_change)` | naive concurrent writes |
+| I2 | `available_stock >= 0` | unsafe validation or decrement logic |
 
 Interactive explainer: `docs/postgres/lost-update.html`.
 
-## Transfer modes (`src/main.go`)
+## Reservation modes
 
-| Mode | Strategy | Correct? |
+| Mode | Strategy | Result |
 |---|---|---|
-| `naive` | read balance into Go, compute, write back | No: lost update under READ COMMITTED |
-| `locked` | `SELECT ... FOR UPDATE` then write | Yes: row lock serializes writers |
-| `atomic` | `UPDATE SET balance = balance + delta` | Yes: arithmetic under the write lock |
-| `serializable` | naive shape under SERIALIZABLE, retry on 40001 | Yes: PG aborts the dependency cycle |
+| `naive` | read stock into Go, validate, calculate, write | Incorrect: concurrent writers lose decrements |
+| `locked` | `SELECT ... FOR UPDATE`, then validate and write | Correct: conflicting reservations wait |
+| `atomic` | conditional `UPDATE ... WHERE available_stock >= quantity` | Correct: validation and decrement happen together |
+| `serializable` | naive shape under `SERIALIZABLE`, with bounded retries | Correct when it commits; may fail after retry exhaustion |
 
-Driver flags: `-mode -workers -iterations -amount -jitter -check -from -to`.
+Driver flags:
+
+```text
+-mode -workers -iterations -quantity -jitter -check -product -max-retries
+```
 
 ## Commands
 
 ```bash
-make up      # start postgres (pinned 17.2-alpine), apply migrations, seed
-make break   # naive mode -> expected to VIOLATE I1/I3 (prints drift table)
-make test    # locked mode -> must HOLD the invariant
-make load    # atomic mode, heavier traffic
-make logs    # follow postgres logs
-make psql    # psql shell
-make down    # remove containers, networks, volumes, built images
-make reset   # down + up
+make up      # start PostgreSQL, apply migrations, seed 10,000 widgets
+make break   # naive mode, expected to violate I1
+make test    # locked mode, I1 and I2 must hold
+make load    # atomic mode with heavier traffic
+make serializable # serializable mode with at most five retries
+make logs    # follow PostgreSQL logs
+make psql    # open a psql shell
+make down    # remove containers, networks, volumes, and local images
+make reset   # down followed by up
 ```
 
-Runs identically on Docker Desktop and OrbStack (plain Compose v2, multi-arch
-pinned image, named volume). No backend detection.
+Runs on Docker Desktop and OrbStack using Compose v2. No host-installed database
+or Go runtime is required.
 
-## Status (2026-06-10)
+## What to observe
 
-Done:
-- Schema migrations `0001`-`0003`, deterministic seed (alice 1,000,000c, bob 0c).
-- `compose.yaml`, `Makefile`, Go driver with all four modes + invariant checker.
-- `make up` verified: postgres healthy, migrations applied, seed loaded.
-- Part 1 interactive explainer at `docs/postgres/lost-update.html`.
+### Naive
 
-Not done yet:
-- `make break` has not been run (driver image not built). Build the image and
-  observe the real drift table.
-- `make test` not run (confirm the locked fix holds).
-- No predictions/observations recorded below.
-- `docs/postgres/lost-update.html` not linked from `docs/index.html`.
+Several workers read the same stock value. Each calculates the same new value.
+Their `UPDATE`s overwrite one another, while every committed order still inserts
+its own stock movement. `available_stock` therefore reports more stock than the
+reservation history permits.
 
-## Next session
+### Locked
 
-1. `make break` — build the driver, watch naive mode violate I1/I3. Note the
-   drift magnitude and tx/s.
-2. `make test` — confirm locked mode holds the invariant at zero drift.
-3. Compare `atomic` and `serializable`: run each, compare tx/s, retry counts,
-   and failure counts. Record the throughput vs contention trade-off.
-4. Observe the *why* (Part 5): during a `naive` run, open `make psql` in another
-   shell and inspect `pg_locks` and `pg_stat_activity`. Confirm nothing guards
-   the read in naive mode; confirm `FOR UPDATE` rows show up as locked.
-5. Verify the lifecycle (Part 7): `make down` removes containers, the
-   `pg-concurrency_default` network, the `pgdata` volume, and the
-   `pg-concurrency-driver:local` image. Confirm `docker volume ls` / `docker
-   image ls` are clean afterward.
-6. Teach-back (Part 8): fold real observations into
-   `docs/postgres/lost-update.html` (add the fix-comparison and the pg_locks
-   evidence), then link it from `docs/index.html`.
+`SELECT ... FOR UPDATE` makes conflicting workers wait. Each worker reads the
+latest committed stock after acquiring the row lock. Correct, but latency grows
+as reservations queue behind one hot product.
 
-## Predictions / observations / conclusions
+### Atomic
 
-(Record here as the runs happen. Empty until `make break` / `make test` are run.)
+The database performs validation and arithmetic in one statement:
+
+```sql
+UPDATE products
+SET available_stock = available_stock - $1
+WHERE id = $2
+  AND available_stock >= $1
+RETURNING available_stock;
+```
+
+This is the smallest transaction shape for this specific invariant.
+
+### Serializable
+
+PostgreSQL detects unsafe concurrent executions and aborts some transactions
+with SQLSTATE `40001`. The driver retries with exponential backoff and jitter,
+but stops after `-max-retries`. Serializable isolation protects correctness; it
+does not guarantee low latency or eventual success under heavy contention.
+
+## Measured results
+
+Run on 2026-06-11 with 8 workers, 250 reservations per worker, quantity 1,
+and 2 ms read/write jitter:
+
+| Mode | Committed | Failed | Retries | Throughput | Drift |
+|---|---:|---:|---:|---:|---:|
+| naive | 2,000 | 0 | 0 | 1,698/s | +1,750 |
+| locked | 2,000 | 0 | 0 | 162/s | 0 |
+| atomic | 2,000 | 0 | 0 | 1,577/s | 0 |
+| serializable | 1,552 | 448 | 3,087 | 167/s | 0 |
+
+These figures are machine-specific, but the behavior is the lesson:
+
+- Naive mode completed quickly while silently overstating stock.
+- Row locking preserved correctness by serializing access to the hot product.
+- Atomic mode preserved correctness with a much smaller critical section.
+- Serializable mode preserved committed-state correctness, but 448 reservations
+  exhausted five retries under contention.
+
+Oversubscription check: atomic mode received 12,000 one-unit reservation
+attempts against 10,000 units. Exactly 10,000 committed, 2,000 returned
+insufficient stock, and availability stopped at zero with no drift.
+
+## Status
+
+Implementation complete:
+
+- Pinned PostgreSQL container and health check
+- Versioned product, order, and stock-movement migrations
+- Deterministic seed data
+- Go driver with four reservation modes
+- Invariant checker
+- Complete teardown command
+
+All four modes and the atomic oversubscription case have been run successfully.
+Complete teardown has also been verified: no project container, network, volume,
+or local driver image remained. Lock inspection remains.
+
+## Lab checklist
+
+1. Inspect `pg_stat_activity` and `pg_locks` during locked mode.
+2. Add lock evidence to this README and the HTML explainer.

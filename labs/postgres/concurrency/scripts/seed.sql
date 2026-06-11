@@ -1,8 +1,8 @@
--- Deterministic seed. Safe to rerun: balances reset to their initial values.
-INSERT INTO accounts (id, name, initial_balance, balance) VALUES
-  ('alice', 'Alice', 1000000, 1000000),
-  ('bob',   'Bob',         0,       0)
+-- Deterministic seed. Safe to rerun: available stock resets to its initial value.
+INSERT INTO products (id, name, initial_stock, available_stock) VALUES
+  ('widget', 'Warehouse Widget', 10000, 10000)
 ON CONFLICT (id) DO UPDATE
-  SET initial_balance = EXCLUDED.initial_balance,
-      balance         = EXCLUDED.balance,
+  SET name            = EXCLUDED.name,
+      initial_stock   = EXCLUDED.initial_stock,
+      available_stock = EXCLUDED.available_stock,
       version         = 0;

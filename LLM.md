@@ -196,33 +196,29 @@ Share specific candidate videos with the user before adding them. Add only appro
 
 Do not add generic "incorrect assumptions" sections or "You know it when" checkpoints.
 
-## Current Learning Project
+## Current Learning Lab
 
-The first realistic project is expected to be a multi-currency ledger. Build it as thin vertical slices rather than completing an application upfront.
-
-Initial entities:
-
-- `accounts`
-- `transfers`
-- balanced debit and credit `postings`
-
-Later concepts may add FX, an outbox, Kafka events, reconciliation, caching, and observability when those mechanisms become the learning focus.
+The first PostgreSQL concurrency lab uses warehouse inventory reservation as a
+neutral scenario. A product has mutable available stock plus immutable stock
+movements. Concurrent workers expose lost updates and compare row locking,
+conditional atomic updates, and serializable isolation.
 
 ## Current State
 
 Completed documentation:
 
 - `docs/postgres/overview.html`: standalone PostgreSQL overview and request-flow visual
-- `docs/postgres/lost-update.html`: interactive lost-update and ledger-invariant explainer (Part 1 of the concurrency lab). Not yet linked from `docs/index.html`.
+- `docs/postgres/lost-update.html`: interactive warehouse-stock lost-update explainer for the concurrency lab
 - `docs/toolbox/overview.html`: systems-tool mental models, comparisons, workload selector, and clickable payment architecture
 - `docs/index.html`: topic landing page with links to current explainers
 
-In-progress lab: `labs/postgres/concurrency/` reproduces a lost update on a money
-balance and fixes it four ways (naive, locked, atomic, serializable). Schema
+In-progress lab: `labs/postgres/concurrency/` reproduces a lost update while
+reserving warehouse stock and compares four modes (naive, locked, atomic,
+serializable). Schema
 migrations, seed, `compose.yaml`, `Makefile`, and the Go driver are built. `make up`
-is verified (postgres healthy, migrations applied, seed loaded). `make break` and
-`make test` have not been run yet. See `labs/postgres/concurrency/README.md` for the
-full status and the next-session checklist.
+is verified. All four modes have been run and measured, atomic oversubscription
+stops exactly at zero stock, and complete teardown is verified. See
+`labs/postgres/concurrency/README.md` for results.
 
 The toolbox architecture distinguishes synchronous requests, Kafka streams, queue delivery, workflows, storage writes, replication/CDC, and metrics. Components and connections expose compact popovers plus detailed explanations.
 
@@ -237,13 +233,9 @@ docs/       Durable HTML learning pages
 
 ## Next Session
 
-The `labs/postgres/concurrency/` slice is built and `make up` is verified. Continue
-by running and observing it, not by adding prose. Full checklist in
-`labs/postgres/concurrency/README.md`. Short form:
+The warehouse concurrency lab is implemented, measured, documented, and cleanly
+torn down. Continue by observing lock behavior:
 
-1. `make break` (build the driver image, watch naive mode violate I1/I3; record drift and tx/s).
-2. `make test` (confirm the locked fix holds at zero drift).
-3. Run and compare `atomic` and `serializable`: tx/s, retries, failures, contention trade-off.
-4. During a naive run, inspect `pg_locks` and `pg_stat_activity` via `make psql` to see why the read is unguarded.
-5. Verify `make down` leaves no containers, networks, volumes, or built images behind.
-6. Fold real observations into `docs/postgres/lost-update.html`, then link it from `docs/index.html`.
+1. Run locked mode while inspecting `pg_locks` and `pg_stat_activity`.
+2. Record which sessions wait and how long the hot product queues work.
+3. Add lock evidence to the README and HTML explainer.

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lost Update &amp; the Ledger Invariant | keystone</title>
+  <title>Lost Updates in Warehouse Stock | keystone</title>
   <style>
     :root {
       --bg: #0d1117;
@@ -20,7 +20,6 @@
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       background: var(--bg);
       color: var(--text);
@@ -28,447 +27,448 @@
       font-size: 15px;
       line-height: 1.7;
     }
-
-    .site-nav {
-      display: flex; align-items: center; gap: 12px;
-      padding: 16px 40px; border-bottom: 1px solid var(--border); background: var(--surface);
-    }
-    .nav-logo { font-weight: 700; font-size: 15px; color: var(--accent); text-decoration: none; }
-    .nav-sep { color: var(--border); }
-    .nav-desc { color: var(--muted); font-size: 13px; flex: 1; }
-    .nav-home { font-size: 13px; color: var(--muted); text-decoration: none; }
-    .nav-home:hover { color: var(--accent); }
-
     main { max-width: 920px; padding: 48px 40px; margin: 0 auto; }
-
-    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
-    .subtitle { color: var(--muted); font-size: 15px; margin-bottom: 40px; }
-
+    h1 { font-size: 2rem; margin-bottom: 8px; }
+    .subtitle { color: var(--muted); margin-bottom: 40px; }
     h2 {
-      font-size: 1.3rem; font-weight: 600; margin: 48px 0 16px;
-      padding-bottom: 8px; border-bottom: 1px solid var(--border); color: var(--text);
+      font-size: 1.3rem;
+      margin: 48px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
     }
-    h3 { font-size: 1rem; font-weight: 600; margin: 28px 0 10px; color: var(--accent); }
-    p { margin-bottom: 14px; color: var(--text); }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-
+    h3 { color: var(--accent); font-size: 1rem; margin: 28px 0 10px; }
+    p { margin-bottom: 14px; }
     code {
-      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px;
-      background: var(--surface); border: 1px solid var(--border);
-      padding: 2px 6px; border-radius: 4px; color: var(--orange);
+      color: var(--orange);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 13px;
     }
     pre {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 8px; padding: 20px; overflow-x: auto; margin: 16px 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      overflow-x: auto;
+      margin: 16px 0;
     }
-    pre code { background: none; border: none; padding: 0; font-size: 12.5px; color: var(--text); }
+    pre code { color: var(--text); background: none; border: 0; padding: 0; }
     .kw { color: var(--purple); }
     .ty { color: var(--accent); }
     .cm { color: var(--muted); font-style: italic; }
     .cn { color: var(--green); }
-
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px; }
+    th, td { border: 1px solid var(--border); padding: 10px 14px; text-align: left; vertical-align: top; }
+    th { color: var(--muted); background: var(--surface); font-size: 12px; text-transform: uppercase; }
+    tr:nth-child(even) td { background: #0f141a; }
+    section { scroll-margin-top: 32px; }
     .callout {
-      border-radius: 8px; padding: 16px 20px; margin: 20px 0;
-      border-left: 3px solid; font-size: 14px;
+      border-left: 3px solid;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+      font-size: 14px;
     }
     .callout.info { background: #1c2a3a; border-color: var(--accent); }
     .callout.warn { background: #2a2010; border-color: var(--yellow); }
-    .callout.danger { background: #2a1010; border-color: var(--red); }
     .callout.success { background: #102a15; border-color: var(--green); }
     .callout .label {
-      font-size: 11px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.08em; margin-bottom: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: 6px;
     }
-    .callout.info .label { color: var(--accent); }
-    .callout.warn .label { color: var(--yellow); }
-    .callout.danger .label { color: var(--red); }
-    .callout.success .label { color: var(--green); }
-
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px; }
-    th {
-      background: var(--surface); border: 1px solid var(--border); padding: 10px 14px;
-      text-align: left; color: var(--muted); font-weight: 600; font-size: 12px;
-      text-transform: uppercase; letter-spacing: 0.05em;
-    }
-    td { border: 1px solid var(--border); padding: 10px 14px; vertical-align: top; }
-    tr:nth-child(even) td { background: #0f141a; }
-
-    section { scroll-margin-top: 32px; }
-    .divider { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
-
-    /* ---- Interactive ledger ---- */
     .lab {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 10px; padding: 24px; margin: 24px 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      margin: 24px 0;
     }
-    .ledger-grid {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px;
+    .stock-card {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 18px;
     }
-    .acct {
-      border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
-      padding: 16px 18px;
+    .metric {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
     }
-    .acct h4 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 12px; }
-    .acct .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
-    .acct .row .lbl { font-size: 12px; color: var(--muted); }
-    .num { font-family: 'SF Mono', monospace; font-size: 15px; font-weight: 600; }
-    .num.cache { color: var(--orange); }
-    .num.truth { color: var(--accent); }
-    .num.match { color: var(--green); }
-    .num.mismatch { color: var(--red); }
-
-    .views-legend { display: flex; gap: 18px; font-size: 12px; color: var(--muted); margin-bottom: 16px; flex-wrap: wrap; }
-    .views-legend span::before { content: '●'; margin-right: 5px; }
-    .views-legend .c-cache::before { color: var(--orange); }
-    .views-legend .c-truth::before { color: var(--accent); }
-
+    .metric .label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+    .metric .value { font: 700 28px "SF Mono", monospace; }
+    .metric.mutable .value { color: var(--orange); }
+    .metric.truth .value { color: var(--accent); }
+    .metric.match { border-color: #275d38; }
+    .metric.mismatch { border-color: var(--red); background: #1a0f0f; }
     .controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
-    .controls button {
-      border: 1px solid var(--border); border-radius: 6px; padding: 9px 14px;
-      background: var(--bg); color: var(--text); cursor: pointer; font: inherit; font-size: 13px;
+    button {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 9px 14px;
+      background: var(--bg);
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
     }
-    .controls button:hover { border-color: var(--accent); color: var(--accent); }
-    .controls button.danger:hover { border-color: var(--red); color: var(--red); }
-    .controls button.reset { margin-left: auto; }
-
-    .invariants { display: grid; gap: 10px; margin-top: 8px; }
+    button:hover { border-color: var(--accent); color: var(--accent); }
+    button.danger:hover { border-color: var(--red); color: var(--red); }
+    button.reset { margin-left: auto; }
+    .invariants { display: grid; gap: 10px; }
     .inv {
-      display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 12px;
-      border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; background: var(--bg);
+      display: grid;
+      grid-template-columns: 26px 1fr auto;
+      gap: 12px;
+      align-items: center;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
     }
-    .inv .badge { font-size: 18px; text-align: center; }
     .inv.ok { border-color: #275d38; }
-    .inv.bad { border-color: #6e2222; background: #1a0f0f; }
-    .inv .desc { font-size: 13px; }
-    .inv .desc .name { font-weight: 700; color: var(--text); }
-    .inv .desc .formula { font-family: 'SF Mono', monospace; font-size: 12px; color: var(--muted); }
-    .inv .val { font-family: 'SF Mono', monospace; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
-
-    .postings-log {
-      margin-top: 16px; max-height: 180px; overflow-y: auto;
-      border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+    .inv.bad { border-color: var(--red); background: #1a0f0f; }
+    .inv .name { font-weight: 700; font-size: 13px; }
+    .inv .formula, .inv .value { color: var(--muted); font: 12px "SF Mono", monospace; }
+    .banner {
+      margin-top: 16px;
+      padding: 12px 16px;
+      border: 1px dashed #275d38;
+      border-radius: 8px;
+      color: var(--green);
+      background: #0f1a12;
+      font-size: 13px;
     }
-    .postings-log table { margin: 0; font-size: 12px; }
-    .postings-log th { position: sticky; top: 0; }
-    .postings-log td.amt-neg { color: var(--red); font-family: 'SF Mono', monospace; }
-    .postings-log td.amt-pos { color: var(--green); font-family: 'SF Mono', monospace; }
-    .postings-empty { padding: 16px; color: var(--muted); font-size: 13px; text-align: center; }
-
-    .drift-banner {
-      margin-top: 16px; padding: 12px 16px; border-radius: 8px; font-size: 13px;
-      border: 1px dashed var(--border); color: var(--muted);
+    .banner.bad { border-color: var(--red); color: var(--red); background: #1a0f0f; }
+    .movement-log {
+      max-height: 190px;
+      overflow-y: auto;
+      margin-top: 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
     }
-    .drift-banner.bad { border-color: var(--red); color: var(--red); background: #1a0f0f; }
-    .drift-banner.good { border-color: #275d38; color: var(--green); background: #0f1a12; }
-
+    .movement-log table { margin: 0; }
+    .movement-log th { position: sticky; top: 0; }
+    .negative { color: var(--red); font-family: "SF Mono", monospace; }
+    .empty { color: var(--muted); padding: 16px; text-align: center; font-size: 13px; }
     @media (max-width: 720px) {
       main { padding: 36px 20px; }
-      .ledger-grid { grid-template-columns: 1fr; }
-      .controls button.reset { margin-left: 0; }
+      .stock-card { grid-template-columns: 1fr; }
+      .inv { grid-template-columns: 26px 1fr; }
+      .inv .value { grid-column: 2; }
+      button.reset { margin-left: 0; }
     }
   </style>
 </head>
 <body>
-
 <div id="site-nav"></div>
 <script src="../components/nav.js"></script>
 
 <main>
-  <h1>Lost Update &amp; the Ledger Invariant</h1>
-  <p class="subtitle">Part 1 · Schema and the invariant · <code>labs/postgres/concurrency</code></p>
+  <h1>Lost Updates in Warehouse Stock</h1>
+  <p class="subtitle">PostgreSQL concurrency lab · <code>labs/postgres/concurrency</code></p>
 
   <div class="callout info">
     <div class="label">Mental model</div>
-    A ledger stores money <strong>twice</strong>. Once as an immutable list of debits and credits (<code>postings</code>), which is the truth. Once as a single mutable running total (<code>accounts.balance</code>), which is a cache for fast reads. Every concurrency bug in this lab lives in the gap between the two. The truth is hard to corrupt because each posting is its own row. The cache is easy to corrupt because concurrent writers fight over one number.
+    A product has one mutable availability number, but every successful
+    reservation also leaves an immutable stock movement. Under concurrency,
+    naive writers can overwrite each other's decrement. The reservation history
+    remains complete while the availability number drifts.
   </div>
 
   <section id="play">
-    <h2>Feel the Invariant</h2>
-    <p>Below is a tiny in-browser ledger. <code>alice</code> starts with 1,000,000 cents, <code>bob</code> with 0. Each transfer should move money <em>and</em> append two balanced postings. Watch both views. Then trigger a race and watch the cache lie.</p>
+    <h2>Trigger the Race</h2>
+    <p>
+      The warehouse starts with 10 widgets. A normal reservation decrements stock
+      once. The race simulates two workers reading the same starting value before
+      either writes.
+    </p>
 
-    <div class="lab" id="ledger">
-      <div class="views-legend">
-        <span class="c-cache">cache = <code>accounts.balance</code> (mutable, fragile)</span>
-        <span class="c-truth">truth = <code>initial + Σ postings</code> (immutable, reliable)</span>
-      </div>
-
-      <div class="ledger-grid">
-        <div class="acct">
-          <h4>alice</h4>
-          <div class="row"><span class="lbl">cache balance</span><span class="num cache" id="alice-cache">10,000.00</span></div>
-          <div class="row"><span class="lbl">truth (init + Σpostings)</span><span class="num truth" id="alice-truth">10,000.00</span></div>
+    <div class="lab">
+      <div class="stock-card">
+        <div class="metric mutable match" id="available-card">
+          <div class="label"><code>products.available_stock</code></div>
+          <div class="value" id="available-stock">10</div>
+          <div class="label">mutable value used by the application</div>
         </div>
-        <div class="acct">
-          <h4>bob</h4>
-          <div class="row"><span class="lbl">cache balance</span><span class="num cache" id="bob-cache">0.00</span></div>
-          <div class="row"><span class="lbl">truth (init + Σpostings)</span><span class="num truth" id="bob-truth">0.00</span></div>
+        <div class="metric truth match" id="expected-card">
+          <div class="label"><code>initial_stock + Σ movements</code></div>
+          <div class="value" id="expected-stock">10</div>
+          <div class="label">expected value from immutable history</div>
         </div>
       </div>
 
       <div class="controls">
-        <button type="button" id="btn-correct">Correct transfer · 1.00 alice → bob</button>
-        <button type="button" id="btn-race" class="danger">2 concurrent transfers (naive race)</button>
+        <button type="button" id="btn-correct">Reserve 1 widget</button>
+        <button type="button" id="btn-race" class="danger">2 concurrent naive reservations</button>
         <button type="button" id="btn-reset" class="reset">Reset</button>
       </div>
 
       <div class="invariants" id="invariants"></div>
+      <div class="banner" id="banner">Stock value and reservation history agree.</div>
 
-      <div class="drift-banner good" id="drift">No drift. Cache and truth agree on every account.</div>
-
-      <div class="postings-log">
+      <div class="movement-log">
         <table>
-          <thead><tr><th>posting</th><th>transfer</th><th>account</th><th>amount</th></tr></thead>
-          <tbody id="postings-body"></tbody>
+          <thead><tr><th>movement</th><th>order</th><th>product</th><th>change</th></tr></thead>
+          <tbody id="movement-body"></tbody>
         </table>
-        <div class="postings-empty" id="postings-empty">No postings yet. Run a transfer.</div>
+        <div class="empty" id="movement-empty">No reservations yet.</div>
       </div>
     </div>
 
     <div class="callout warn">
-      <div class="label">What the race button simulates</div>
-      Two transfers run at the same time. Both read <code>balance = B</code>, both compute <code>B − 1</code> in application memory, both write <code>B − 1</code> back. The second write overwrites the first: one decrement is <strong>lost</strong>. The postings are unaffected (two separate INSERTs both land), so the truth still says <code>−2</code> while the cache only moved <code>−1</code>. That difference is a lost update, and it is exactly what <code>make break</code> will reproduce against real PostgreSQL.
+      <div class="label">What gets lost</div>
+      Both workers read <code>available_stock = 10</code>. Both calculate
+      <code>9</code>. Both write <code>9</code>. Two orders and two movements
+      commit, so history says 8 widgets remain, but the mutable row says 9.
+      PostgreSQL executed both transactions successfully; the application used
+      an unsafe transaction shape.
     </div>
   </section>
 
-  <hr class="divider" />
-
-  <section id="tables">
+  <section id="schema">
     <h2>The Three Tables</h2>
-    <p>Money is stored in <strong>minor units</strong> (cents) as <code>bigint</code>. Never floats for money: <code>0.1 + 0.2 ≠ 0.3</code> in binary floating point, and a ledger that rounds is a ledger that leaks.</p>
 
-    <h3>accounts — the cache that gets corrupted</h3>
-    <pre><code><span class="kw">CREATE TABLE</span> accounts (
-  id               <span class="ty">text</span>        <span class="kw">PRIMARY KEY</span>,        <span class="cm">-- 'alice', 'bob'</span>
-  name             <span class="ty">text</span>        <span class="kw">NOT NULL</span>,
-  initial_balance  <span class="ty">bigint</span>      <span class="kw">NOT NULL</span>,           <span class="cm">-- set once at seed, never mutated</span>
-  balance          <span class="ty">bigint</span>      <span class="kw">NOT NULL</span>,           <span class="cm">-- the mutable cache (the victim)</span>
-  version          <span class="ty">int</span>         <span class="kw">NOT NULL DEFAULT</span> <span class="cn">0</span>, <span class="cm">-- seam for a later optimistic-lock demo</span>
-  created_at       <span class="ty">timestamptz</span> <span class="kw">NOT NULL DEFAULT</span> now()
+    <h3>products: the contested row</h3>
+    <pre><code><span class="kw">CREATE TABLE</span> products (
+  id              <span class="ty">text</span>   <span class="kw">PRIMARY KEY</span>,
+  name            <span class="ty">text</span>   <span class="kw">NOT NULL</span>,
+  initial_stock   <span class="ty">bigint</span> <span class="kw">NOT NULL CHECK</span> (initial_stock &gt;= <span class="cn">0</span>),
+  available_stock <span class="ty">bigint</span> <span class="kw">NOT NULL CHECK</span> (available_stock &gt;= <span class="cn">0</span>),
+  version         <span class="ty">int</span>    <span class="kw">NOT NULL DEFAULT</span> <span class="cn">0</span>
 );</code></pre>
 
-    <h3>transfers — one row per transfer intent</h3>
-    <pre><code><span class="kw">CREATE TABLE</span> transfers (
-  id               <span class="ty">uuid</span>        <span class="kw">PRIMARY KEY DEFAULT</span> gen_random_uuid(),
-  from_account     <span class="ty">text</span>        <span class="kw">NOT NULL REFERENCES</span> accounts(id),
-  to_account       <span class="ty">text</span>        <span class="kw">NOT NULL REFERENCES</span> accounts(id),
-  amount           <span class="ty">bigint</span>      <span class="kw">NOT NULL CHECK</span> (amount &gt; <span class="cn">0</span>),
-  idempotency_key  <span class="ty">text</span>        <span class="kw">UNIQUE</span>,                 <span class="cm">-- seam for a later idempotency slice</span>
-  created_at       <span class="ty">timestamptz</span> <span class="kw">NOT NULL DEFAULT</span> now()
+    <h3>orders: one accepted reservation</h3>
+    <pre><code><span class="kw">CREATE TABLE</span> orders (
+  id              <span class="ty">uuid</span>   <span class="kw">PRIMARY KEY DEFAULT</span> gen_random_uuid(),
+  product_id      <span class="ty">text</span>   <span class="kw">NOT NULL REFERENCES</span> products(id),
+  quantity        <span class="ty">bigint</span> <span class="kw">NOT NULL CHECK</span> (quantity &gt; <span class="cn">0</span>),
+  idempotency_key <span class="ty">text</span>   <span class="kw">UNIQUE</span>
 );</code></pre>
 
-    <h3>postings — the immutable double-entry truth</h3>
-    <pre><code><span class="kw">CREATE TABLE</span> postings (
-  id           <span class="ty">bigserial</span>   <span class="kw">PRIMARY KEY</span>,
-  transfer_id  <span class="ty">uuid</span>        <span class="kw">NOT NULL REFERENCES</span> transfers(id),
-  account_id   <span class="ty">text</span>        <span class="kw">NOT NULL REFERENCES</span> accounts(id),
-  amount       <span class="ty">bigint</span>      <span class="kw">NOT NULL</span>,          <span class="cm">-- signed: debit negative, credit positive</span>
-  created_at   <span class="ty">timestamptz</span> <span class="kw">NOT NULL DEFAULT</span> now()
+    <h3>stock_movements: immutable reservation history</h3>
+    <pre><code><span class="kw">CREATE TABLE</span> stock_movements (
+  id              <span class="ty">bigserial</span> <span class="kw">PRIMARY KEY</span>,
+  order_id        <span class="ty">uuid</span>      <span class="kw">NOT NULL REFERENCES</span> orders(id),
+  product_id      <span class="ty">text</span>      <span class="kw">NOT NULL REFERENCES</span> products(id),
+  quantity_change <span class="ty">bigint</span>    <span class="kw">NOT NULL CHECK</span> (quantity_change &lt; <span class="cn">0</span>)
 );</code></pre>
-    <p>Each transfer writes <strong>two</strong> postings: <code>−amount</code> on the source, <code>+amount</code> on the destination. They sum to zero. That is double-entry bookkeeping: money is never created or destroyed, only moved.</p>
   </section>
 
-  <hr class="divider" />
-
-  <section id="invariant-defs">
-    <h2>The Invariants We Will Assert</h2>
+  <section id="invariant-definitions">
+    <h2>The Invariants</h2>
     <table>
-      <tr><th>#</th><th>Invariant</th><th>Holds when?</th></tr>
+      <tr><th>#</th><th>Rule</th><th>Purpose</th></tr>
       <tr>
-        <td><strong>I1</strong></td>
-        <td>For every account: <code>balance == initial_balance + Σ postings.amount</code></td>
-        <td>Breaks under naive concurrent writes. This is the lost-update detector.</td>
+        <td>I1</td>
+        <td><code>available_stock == initial_stock + Σ quantity_change</code></td>
+        <td>Detects lost decrements by comparing mutable state with reservation history.</td>
       </tr>
       <tr>
-        <td><strong>I2</strong></td>
-        <td>For every transfer: <code>Σ postings.amount WHERE transfer_id = t == 0</code></td>
-        <td>Always holds. Each posting is an independent INSERT; concurrency cannot unbalance a pair.</td>
-      </tr>
-      <tr>
-        <td><strong>I3</strong></td>
-        <td>System-wide: <code>Σ accounts.balance == Σ accounts.initial_balance</code></td>
-        <td>Breaks under naive writes. Money conservation across the whole ledger.</td>
+        <td>I2</td>
+        <td><code>available_stock &gt;= 0</code></td>
+        <td>Prevents accepting more reservations than the warehouse can fulfil.</td>
       </tr>
     </table>
+  </section>
+
+  <section id="strategies">
+    <h2>Four Transaction Shapes</h2>
+    <table>
+      <tr><th>Mode</th><th>Behavior</th><th>Trade-off</th></tr>
+      <tr>
+        <td><code>naive</code></td>
+        <td>Read, validate, calculate in Go, then write.</td>
+        <td>Incorrect because the read is not protected.</td>
+      </tr>
+      <tr>
+        <td><code>locked</code></td>
+        <td>Read with <code>SELECT ... FOR UPDATE</code>.</td>
+        <td>Correct. Conflicting reservations wait and hot products form a queue.</td>
+      </tr>
+      <tr>
+        <td><code>atomic</code></td>
+        <td>Validate and decrement in one conditional <code>UPDATE</code>.</td>
+        <td>Correct and compact for this single-row invariant.</td>
+      </tr>
+      <tr>
+        <td><code>serializable</code></td>
+        <td>Keep the naive shape, let PostgreSQL abort unsafe executions, then retry.</td>
+        <td>Correct when committed, but contention can exhaust bounded retries.</td>
+      </tr>
+    </table>
+
     <div class="callout success">
-      <div class="label">Why this design is self-checking</div>
-      Because <code>initial_balance</code> is frozen at seed time, the database carries its own ground truth. No external bookkeeping is needed to know whether the cache lied: <code>make break</code> just compares <code>balance</code> against <code>initial_balance + Σ postings</code> and prints the drift.
+      <div class="label">Smallest reliable statement</div>
+      <pre><code><span class="kw">UPDATE</span> products
+<span class="kw">SET</span> available_stock = available_stock - $1
+<span class="kw">WHERE</span> id = $2
+  <span class="kw">AND</span> available_stock &gt;= $1
+<span class="kw">RETURNING</span> available_stock;</code></pre>
+      A returned row means the reservation succeeded. No returned row means
+      there was not enough stock. Validation and mutation occur under the same
+      row lock.
     </div>
   </section>
 
-  <hr class="divider" />
+  <section id="run">
+    <h2>Run the Real Experiment</h2>
+    <pre><code><span class="cm"># Start PostgreSQL, migrate, and seed</span>
+<span class="cn">cd</span> labs/postgres/concurrency
+<span class="cn">make up</span>
 
-  <section id="choices">
-    <h2>Design Choices Worth Noting</h2>
-    <table>
-      <tr><th>Choice</th><th>Why</th></tr>
-      <tr><td><code>bigint</code> cents, never float</td><td>Floating point cannot represent most decimal money values exactly. Integers in minor units are exact and orderable.</td></tr>
-      <tr><td><code>initial_balance</code> frozen</td><td>Gives the invariant a fixed reference point so the DB is self-describing. The checker needs nothing external.</td></tr>
-      <tr><td><code>gen_random_uuid()</code></td><td>Built into PostgreSQL core since v13. No <code>pgcrypto</code> extension required.</td></tr>
-      <tr><td><code>version</code> column (unused now)</td><td>The seam for a later optimistic-locking variant (compare-and-set on <code>version</code>). Costs nothing to include up front.</td></tr>
-      <tr><td><code>UNIQUE (idempotency_key)</code></td><td>The seam for a later idempotency slice: turn duplicate submissions into a DB-enforced invariant.</td></tr>
-      <tr><td>Signed posting amounts</td><td>One column expresses both debit and credit. A transfer is two rows summing to zero, which makes I2 trivial to check.</td></tr>
-    </table>
+<span class="cm"># Demonstrate drift, then prove the lock-based fix</span>
+<span class="cn">make break</span>
+<span class="cn">make test</span></code></pre>
+    <p>
+      The browser simulation makes the interleaving visible. The Go driver creates
+      the same race against PostgreSQL with concurrent workers and prints measured
+      stock drift.
+    </p>
   </section>
 
-  <hr class="divider" />
-
-  <section id="next">
-    <h2>What Comes Next</h2>
-    <p>These four files are everything Part 1 produces:</p>
-    <pre><code>labs/postgres/concurrency/migrations/0001_accounts.sql
-labs/postgres/concurrency/migrations/0002_transfers.sql
-labs/postgres/concurrency/migrations/0003_postings.sql
-labs/postgres/concurrency/scripts/seed.sql        <span class="cm">-- alice: 1,000,000c   bob: 0c</span></code></pre>
-    <p><strong>Part 2</strong> wraps these in a pinned, healthchecked PostgreSQL container that runs identically on Docker Desktop and OrbStack, with <code>make up</code> to bring it live. The simulation above is a model; Part 4 reproduces the same drift against real PostgreSQL with concurrent Go workers.</p>
+  <section id="results">
+    <h2>Measured Results</h2>
+    <p>
+      One run on 2026-06-11 used 8 workers, 250 reservations per worker, and a
+      2 ms delay between read and write. Throughput varies by machine; the
+      correctness and contention behavior are the important parts.
+    </p>
+    <table>
+      <tr><th>Mode</th><th>Committed</th><th>Failed</th><th>Retries</th><th>Rate</th><th>Drift</th></tr>
+      <tr><td>naive</td><td>2,000</td><td>0</td><td>0</td><td>1,698/s</td><td>+1,750</td></tr>
+      <tr><td>locked</td><td>2,000</td><td>0</td><td>0</td><td>162/s</td><td>0</td></tr>
+      <tr><td>atomic</td><td>2,000</td><td>0</td><td>0</td><td>1,577/s</td><td>0</td></tr>
+      <tr><td>serializable</td><td>1,552</td><td>448</td><td>3,087</td><td>167/s</td><td>0</td></tr>
+    </table>
+    <div class="callout warn">
+      <div class="label">Serializable protects correctness, not completion</div>
+      Every committed reservation was correct, but 448 attempts still failed
+      after five retries. Under heavy contention, an application needs bounded
+      retries and a defined failure response.
+    </div>
+    <div class="callout success">
+      <div class="label">Atomic oversubscription check</div>
+      With 12,000 attempts against 10,000 units, exactly 10,000 committed and
+      2,000 returned insufficient stock. Availability stopped at zero with no
+      drift.
+    </div>
   </section>
 
   <script>
-    const ALICE_INIT = 1000000; // cents
-    const BOB_INIT = 0;
+    const INITIAL_STOCK = 10;
+    const state = { available: INITIAL_STOCK, movements: [], orderID: 0, movementID: 0 };
 
-    const state = {
-      cache: { alice: ALICE_INIT, bob: BOB_INIT },
-      initial: { alice: ALICE_INIT, bob: BOB_INIT },
-      postings: [],   // {pid, tid, account, amount}
-      pid: 0,
-      tid: 0,
-    };
-
-    const fmt = (cents) =>
-      (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-    function truth(account) {
-      const sum = state.postings
-        .filter((p) => p.account === account)
-        .reduce((acc, p) => acc + p.amount, 0);
-      return state.initial[account] + sum;
+    function expectedStock() {
+      return INITIAL_STOCK + state.movements.reduce((sum, movement) => sum + movement.change, 0);
     }
 
-    function correctTransfer(amount) {
-      state.tid += 1;
-      const tid = 'T' + state.tid;
-      // truth: two balanced postings
-      state.postings.push({ pid: ++state.pid, tid, account: 'alice', amount: -amount });
-      state.postings.push({ pid: ++state.pid, tid, account: 'bob', amount: amount });
-      // cache: applied atomically, both sides move
-      state.cache.alice -= amount;
-      state.cache.bob += amount;
+    function reserveCorrectly() {
+      if (state.available < 1) return;
+      state.available -= 1;
+      appendMovement();
       render();
     }
 
-    function naiveRace(amount) {
-      // Two concurrent transfers. Postings for BOTH always land (independent INSERTs).
-      const aliceStart = state.cache.alice;
-      const bobStart = state.cache.bob;
-      for (let i = 0; i < 2; i++) {
-        state.tid += 1;
-        const tid = 'T' + state.tid;
-        state.postings.push({ pid: ++state.pid, tid, account: 'alice', amount: -amount });
-        state.postings.push({ pid: ++state.pid, tid, account: 'bob', amount: amount });
-      }
-      // Lost update: both transfers read the SAME starting balance and wrote back
-      // start - amount. The second write clobbers the first. Net cache move = one amount,
-      // even though two transfers (two postings each) were recorded.
-      state.cache.alice = aliceStart - amount;
-      state.cache.bob = bobStart + amount;
+    function reserveNaivelyTwice() {
+      if (state.available < 1) return;
+      const staleRead = state.available;
+      appendMovement();
+      appendMovement();
+      state.available = staleRead - 1;
       render();
+    }
+
+    function appendMovement() {
+      state.orderID += 1;
+      state.movementID += 1;
+      state.movements.push({
+        id: state.movementID,
+        order: `O${state.orderID}`,
+        product: "widget",
+        change: -1,
+      });
     }
 
     function reset() {
-      state.cache = { alice: ALICE_INIT, bob: BOB_INIT };
-      state.postings = [];
-      state.pid = 0;
-      state.tid = 0;
+      state.available = INITIAL_STOCK;
+      state.movements = [];
+      state.orderID = 0;
+      state.movementID = 0;
       render();
     }
 
-    function setNum(id, cents, matches) {
-      const el = document.getElementById(id);
-      el.textContent = fmt(cents);
-      el.classList.toggle('match', matches === true);
-      el.classList.toggle('mismatch', matches === false);
-    }
-
     function render() {
-      const aliceCache = state.cache.alice, aliceTruth = truth('alice');
-      const bobCache = state.cache.bob, bobTruth = truth('bob');
-      const aliceOk = aliceCache === aliceTruth;
-      const bobOk = bobCache === bobTruth;
+      const expected = expectedStock();
+      const consistent = state.available === expected;
+      const nonNegative = state.available >= 0;
 
-      setNum('alice-cache', aliceCache, aliceOk);
-      setNum('alice-truth', aliceTruth, aliceOk);
-      setNum('bob-cache', bobCache, bobOk);
-      setNum('bob-truth', bobTruth, bobOk);
+      document.getElementById("available-stock").textContent = state.available;
+      document.getElementById("expected-stock").textContent = expected;
+      for (const id of ["available-card", "expected-card"]) {
+        document.getElementById(id).classList.toggle("match", consistent);
+        document.getElementById(id).classList.toggle("mismatch", !consistent);
+      }
 
-      // Invariants
-      const i1ok = aliceOk && bobOk;
-      const i2ok = true; // postings always inserted in balanced pairs
-      const sumCache = aliceCache + bobCache;
-      const sumInit = state.initial.alice + state.initial.bob;
-      const i3ok = sumCache === sumInit;
-
-      const invs = [
+      const invariants = [
         {
-          ok: i1ok, name: 'I1 · cache equals truth',
-          formula: 'balance == initial + Σ postings',
-          val: `alice ${fmt(aliceCache)} vs ${fmt(aliceTruth)} · bob ${fmt(bobCache)} vs ${fmt(bobTruth)}`,
+          ok: consistent,
+          name: "I1: mutable stock matches history",
+          formula: "available == initial + Σ movements",
+          value: `${state.available} vs ${expected}`,
         },
         {
-          ok: i2ok, name: 'I2 · transfers balance',
-          formula: 'Σ postings per transfer == 0',
-          val: `${state.tid} transfer(s), all pairs sum to 0`,
-        },
-        {
-          ok: i3ok, name: 'I3 · money conserved',
-          formula: 'Σ balance == Σ initial',
-          val: `Σ cache ${fmt(sumCache)} vs Σ initial ${fmt(sumInit)}`,
+          ok: nonNegative,
+          name: "I2: stock is never negative",
+          formula: "available >= 0",
+          value: String(state.available),
         },
       ];
+      document.getElementById("invariants").innerHTML = invariants.map((item) => `
+        <div class="inv ${item.ok ? "ok" : "bad"}">
+          <div>${item.ok ? "OK" : "!!"}</div>
+          <div><div class="name">${item.name}</div><div class="formula">${item.formula}</div></div>
+          <div class="value">${item.value}</div>
+        </div>
+      `).join("");
 
-      const wrap = document.getElementById('invariants');
-      wrap.innerHTML = invs.map((iv) => `
-        <div class="inv ${iv.ok ? 'ok' : 'bad'}">
-          <div class="badge">${iv.ok ? '✅' : '❌'}</div>
-          <div class="desc"><span class="name">${iv.name}</span><br><span class="formula">${iv.formula}</span></div>
-          <div class="val">${iv.val}</div>
-        </div>`).join('');
-
-      // Drift banner
-      const drift = (aliceTruth - aliceCache) + (bobCache - bobTruth);
-      const banner = document.getElementById('drift');
-      if (i1ok && i3ok) {
-        banner.className = 'drift-banner good';
-        banner.textContent = 'No drift. Cache and truth agree on every account.';
+      const banner = document.getElementById("banner");
+      if (consistent) {
+        banner.className = "banner";
+        banner.textContent = "Stock value and reservation history agree.";
       } else {
-        const created = sumCache - sumInit;
-        banner.className = 'drift-banner bad';
-        banner.textContent =
-          `Lost update detected. Cache disagrees with the postings. ` +
-          `System-wide the cache now shows ${created > 0 ? '+' : ''}${fmt(created)} that the postings never authorised. The truth is intact; the cache lied.`;
+        banner.className = "banner bad";
+        banner.textContent = `Lost update: the product row overstates stock by ${state.available - expected} unit(s).`;
       }
 
-      // Postings log
-      const body = document.getElementById('postings-body');
-      const empty = document.getElementById('postings-empty');
-      if (state.postings.length === 0) {
-        body.innerHTML = '';
-        empty.style.display = 'block';
+      const body = document.getElementById("movement-body");
+      const empty = document.getElementById("movement-empty");
+      if (state.movements.length === 0) {
+        body.innerHTML = "";
+        empty.style.display = "block";
       } else {
-        empty.style.display = 'none';
-        body.innerHTML = state.postings.slice().reverse().map((p) => `
+        empty.style.display = "none";
+        body.innerHTML = state.movements.slice().reverse().map((movement) => `
           <tr>
-            <td>#${p.pid}</td>
-            <td>${p.tid}</td>
-            <td>${p.account}</td>
-            <td class="${p.amount < 0 ? 'amt-neg' : 'amt-pos'}">${p.amount > 0 ? '+' : ''}${fmt(p.amount)}</td>
-          </tr>`).join('');
+            <td>#${movement.id}</td>
+            <td>${movement.order}</td>
+            <td>${movement.product}</td>
+            <td class="negative">${movement.change}</td>
+          </tr>
+        `).join("");
       }
     }
 
-    document.getElementById('btn-correct').addEventListener('click', () => correctTransfer(100));
-    document.getElementById('btn-race').addEventListener('click', () => naiveRace(100));
-    document.getElementById('btn-reset').addEventListener('click', reset);
+    document.getElementById("btn-correct").addEventListener("click", reserveCorrectly);
+    document.getElementById("btn-race").addEventListener("click", reserveNaivelyTwice);
+    document.getElementById("btn-reset").addEventListener("click", reset);
     render();
   </script>
 </main>

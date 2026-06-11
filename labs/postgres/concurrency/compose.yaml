@@ -6,13 +6,13 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-lab}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lab}
-      POSTGRES_DB: ${POSTGRES_DB:-ledger}
+      POSTGRES_DB: ${POSTGRES_DB:-warehouse}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lab} -d ${POSTGRES_DB:-ledger}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lab} -d ${POSTGRES_DB:-warehouse}"]
       interval: 2s
       timeout: 3s
       retries: 15
@@ -24,7 +24,7 @@ services:
     image: pg-concurrency-driver:local
     profiles: ["tools"]
     environment:
-      DATABASE_URL: "postgres://${POSTGRES_USER:-lab}:${POSTGRES_PASSWORD:-lab}@postgres:5432/${POSTGRES_DB:-ledger}?sslmode=disable"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-lab}:${POSTGRES_PASSWORD:-lab}@postgres:5432/${POSTGRES_DB:-warehouse}?sslmode=disable"
     depends_on:
       postgres:
         condition: service_healthy
