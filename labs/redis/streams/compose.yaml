@@ -1,0 +1,24 @@
+name: redis-streams
+
+services:
+  redis:
+    image: redis:8.0-alpine
+    ports:
+      - "${REDIS_PORT:-6383}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+    restart: unless-stopped
+
+  driver:
+    build:
+      context: ./src
+    image: redis-streams-driver:local
+    profiles: ["tools"]
+    environment:
+      REDIS_ADDR: "redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
