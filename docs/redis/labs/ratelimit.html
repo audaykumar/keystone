@@ -21,6 +21,11 @@
     <div class="metric"><strong>Smoothness</strong><span>The sliding window prevents 2x boundary bursts, but still allows a burst up to the limit.</span></div>
   </div>
 
+  <div class="callout">
+    <strong>The point of the lab</strong>
+    This is not a race-condition demo. Both implementations use Lua, so the Redis update itself is atomic. The failure is the meaning of the window. Fixed window asks "how many requests since the last clock boundary?" Sliding window asks "how many requests in the last N seconds?"
+  </div>
+
   <div class="diagram-shell">
     <div class="flow-diagram" data-lab-diagram data-detail-target="rate-detail">
       <div class="flow-row">
@@ -45,15 +50,41 @@
     </div>
   </div>
 
-  <h2>Redis Commands</h2>
+  <h2>What Actually Fails</h2>
+  <p>The broken run sends one full batch just before a clock boundary and another full batch just after it. With a limit of 8 per 10 seconds, the fixed-window limiter can allow 16 requests in roughly 400ms.</p>
+
+  <pre><code>phase 1: 8 requests BEFORE window boundary
+ALLOW  req=8    count=8/8  window-resets-in=1s
+
+fixed window counter reset to 0
+
+phase 2: 8 requests AFTER window boundary
+ALLOW  burst=8  count=8/8  window-resets-in=10s
+
+RESULT: total allowed = 16, configured limit = 8</code></pre>
+
+  <p>The fixed-window script did not lose an update. It counted exactly what it was asked to count. The problem is that two adjacent fixed windows can overlap into a very small real-time burst.</p>
+
+  <h2>Code Pointers</h2>
+  <table>
+    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td><code>fixedWindowScript</code></td><td>Builds a counter key from the window start time. That creates the reset at the boundary.</td></tr>
+      <tr><td><code>slidingWindowScript</code></td><td>Stores request timestamps in a sorted set and removes only entries older than the rolling window.</td></tr>
+      <tr><td><code>runFixed</code></td><td>Waits until 200ms before a clock boundary, sends the first batch, waits 200ms after the boundary, then sends the burst.</td></tr>
+      <tr><td><code>runSliding</code></td><td>Uses the same timing as <code>runFixed</code>, but the first batch is still inside the rolling window when the second batch arrives.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Redis Commands In This Lab</h2>
   <div class="command-grid">
-    <div class="command-card"><h3><code>INCR key</code></h3><p>Atomically increments an integer counter. Used by the fixed-window limiter.</p></div>
-    <div class="command-card"><h3><code>EXPIRE key seconds</code></h3><p>Sets a TTL on the fixed-window counter so old window keys disappear.</p></div>
-    <div class="command-card"><h3><code>ZADD key score member</code></h3><p>Adds one request timestamp to the sorted set. Score is request time in milliseconds.</p></div>
-    <div class="command-card"><h3><code>ZREMRANGEBYSCORE key 0 cutoff</code></h3><p>Deletes request timestamps older than the rolling window.</p></div>
-    <div class="command-card"><h3><code>ZCARD key</code></h3><p>Counts how many request timestamps remain after cleanup.</p></div>
-    <div class="command-card"><h3><code>PEXPIRE key ms</code></h3><p>Applies a millisecond TTL to the sliding-window sorted set.</p></div>
-    <div class="command-card"><h3><code>EVAL script keys args</code></h3><p>Runs the limiter check and update atomically on the Redis server.</p></div>
+    <div class="command-card"><h3><code>EVAL script keys args</code></h3><p>The Go driver sends each limiter decision to Redis as one script. That keeps check plus update atomic.</p></div>
+    <div class="command-card"><h3><code>INCR rl:fixed:&lt;start&gt;</code></h3><p>Counts requests in one fixed window. The suffix changes when the clock crosses the boundary.</p></div>
+    <div class="command-card"><h3><code>EXPIRE key seconds</code></h3><p>Cleans up fixed-window counters. It is not what enforces the limit. The count comparison does that.</p></div>
+    <div class="command-card"><h3><code>ZREMRANGEBYSCORE rl:sliding 0 cutoff</code></h3><p>Deletes timestamps that are too old to count. This is what makes the window roll forward continuously.</p></div>
+    <div class="command-card"><h3><code>ZCARD rl:sliding</code></h3><p>Counts the remaining timestamps after cleanup. If this count is already at the limit, deny.</p></div>
+    <div class="command-card"><h3><code>ZADD rl:sliding now uid</code></h3><p>Records an allowed request. The score is the timestamp. The member is unique so multiple requests in the same millisecond do not overwrite each other.</p></div>
+    <div class="command-card"><h3><code>PEXPIRE rl:sliding ms</code></h3><p>Lets Redis delete the sorted set after the user stops sending requests.</p></div>
   </div>
 
   <h2>Fixed-Window Lua</h2>
@@ -65,10 +96,10 @@ if count > limit then return {0, count, remaining} end
 return {1, count, remaining}</code></pre>
   <div class="script-breakdown">
     <div class="script-step"><code>winStart = nowSec - (nowSec % windowSec)</code><p>Rounds time down to a clock-aligned window. This is why the boundary burst exists.</p></div>
-    <div class="script-step"><code>key = KEYS[1] .. ':' .. winStart</code><p>Creates one Redis counter per window start.</p></div>
-    <div class="script-step"><code>INCR</code><p>Counts this request in the current fixed window.</p></div>
-    <div class="script-step"><code>EXPIRE</code><p>Sets cleanup TTL only when the counter is first created.</p></div>
-    <div class="script-step"><code>return {0 or 1, count, remaining}</code><p>Returns allow/deny, current count, and seconds until reset.</p></div>
+    <div class="script-step"><code>key = KEYS[1] .. ':' .. winStart</code><p>Creates a separate Redis key for each fixed window. A request after the boundary no longer sees the previous count.</p></div>
+    <div class="script-step"><code>INCR</code><p>Atomically increments the counter for that one window. This part is correct and safe under concurrency.</p></div>
+    <div class="script-step"><code>EXPIRE</code><p>Sets cleanup TTL only when the counter is first created. The lab uses <code>windowSec * 2</code> so old counters live long enough to inspect briefly.</p></div>
+    <div class="script-step"><code>return {0 or 1, count, remaining}</code><p>Returns allow/deny, the counter value, and seconds until the next fixed-window reset.</p></div>
   </div>
 
   <h2>Sliding-Window Lua</h2>
@@ -79,12 +110,42 @@ redis.call('ZADD', key, now, uid)
 redis.call('PEXPIRE', key, windowMs)
 return {1, count + 1}</code></pre>
   <div class="script-breakdown">
-    <div class="script-step"><code>ZREMRANGEBYSCORE</code><p>Removes requests that are older than the rolling window.</p></div>
-    <div class="script-step"><code>ZCARD</code><p>Counts requests still inside the window.</p></div>
-    <div class="script-step"><code>count >= limit</code><p>Denies before adding this request if the window is already full.</p></div>
-    <div class="script-step"><code>ZADD</code><p>Records the accepted request with a unique member id.</p></div>
-    <div class="script-step"><code>PEXPIRE</code><p>Cleans up the key after activity stops.</p></div>
+    <div class="script-step"><code>ZREMRANGEBYSCORE</code><p>Removes timestamps older than <code>now - windowMs</code>. Unlike fixed window, this cutoff changes every millisecond.</p></div>
+    <div class="script-step"><code>ZCARD</code><p>Counts requests still inside the last N seconds.</p></div>
+    <div class="script-step"><code>count >= limit</code><p>Denies before adding this request. That avoids temporarily storing a request that should not count.</p></div>
+    <div class="script-step"><code>ZADD</code><p>Records the accepted request with a unique member id. The score gives Redis the time ordering.</p></div>
+    <div class="script-step"><code>PEXPIRE</code><p>Cleans up the key after activity stops. The limiter would still work without this, but abandoned keys would accumulate.</p></div>
   </div>
+
+  <h2>How The Fixed Run Should Look</h2>
+  <pre><code>make break
+
+What will happen: one burst lands before a window boundary and another just after it.
+Watch for: both phases allowed because the fixed counter resets at the boundary.
+
+ALLOW  req=1    count=1/8
+...
+ALLOW  req=8    count=8/8
+
+fixed window counter reset to 0
+
+ALLOW  burst=1  count=1/8
+...
+ALLOW  burst=8  count=8/8</code></pre>
+
+  <h2>How The Sliding Run Should Look</h2>
+  <pre><code>make test
+
+What will happen: same boundary timing, but requests are counted in a rolling window.
+Watch for: phase-2 requests denied because phase-1 entries are still recent.
+
+ALLOW  req=8    window-count=8/8
+
+sliding window still contains phase-1 entries
+
+DENY   burst=1  window-count=8/8  (phase-1 still counted)
+...
+DENY   burst=8  window-count=8/8  (phase-1 still counted)</code></pre>
 
   <h2>Run Targets</h2>
   <div class="run-grid">
@@ -95,8 +156,9 @@ return {1, count + 1}</code></pre>
 
   <h2>Production Notes</h2>
   <ul>
+    <li>Mental trap: Lua makes the update atomic, but it does not make fixed-window semantics fair.</li>
     <li>Fixed window is simple, but it allows boundary bursts.</li>
-    <li>Sliding window prevents boundary bursts, but it is not a strict smooth limiter.</li>
+    <li>Sliding window prevents boundary bursts, but it is not a strict smooth limiter. A client can still spend the full limit immediately and then wait.</li>
     <li>For smooth spacing, use GCRA or a leaky-bucket style limiter with <code>next_allowed_at</code> or theoretical arrival time.</li>
     <li>Use server-side time or consistent app time when multiple app instances apply the same limiter.</li>
   </ul>
