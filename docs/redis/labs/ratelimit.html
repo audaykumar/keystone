@@ -69,10 +69,10 @@ RESULT: total allowed = 16, configured limit = 8</code></pre>
   <table>
     <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
     <tbody>
-      <tr><td><code>fixedWindowScript</code></td><td>Builds a counter key from the window start time. That creates the reset at the boundary.</td></tr>
-      <tr><td><code>slidingWindowScript</code></td><td>Stores request timestamps in a sorted set and removes only entries older than the rolling window.</td></tr>
-      <tr><td><code>runFixed</code></td><td>Waits until 200ms before a clock boundary, sends the first batch, waits 200ms after the boundary, then sends the burst.</td></tr>
-      <tr><td><code>runSliding</code></td><td>Uses the same timing as <code>runFixed</code>, but the first batch is still inside the rolling window when the second batch arrives.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L23-L38"><code>fixedWindowScript</code></a></td><td>Builds a counter key from the window start time. That creates the reset at the boundary.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L42-L57"><code>slidingWindowScript</code></a></td><td>Stores request timestamps in a sorted set and removes only entries older than the rolling window.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L102-L161"><code>runFixed</code></a></td><td>Waits until 200ms before a clock boundary, sends the first batch, waits 200ms after the boundary, then sends the burst.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L168-L226"><code>runSliding</code></a></td><td>Uses the same timing as <code>runFixed</code>, but the first batch is still inside the rolling window when the second batch arrives.</td></tr>
     </tbody>
   </table>
 
