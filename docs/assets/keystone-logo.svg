@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Keystone logo</title>
+  <desc id="desc">A geometric keystone mark with connected system nodes.</desc>
+  <defs>
+    <linearGradient id="stone" x1="18" y1="18" x2="110" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#58a6ff"/>
+      <stop offset="0.52" stop-color="#56d4dd"/>
+      <stop offset="1" stop-color="#56d364"/>
+    </linearGradient>
+    <linearGradient id="core" x1="42" y1="32" x2="88" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#172334"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#58a6ff" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#0d1117"/>
+  <path d="M64 14 108 40v48l-44 26-44-26V40z" fill="#101722" stroke="url(#stone)" stroke-width="6" filter="url(#glow)"/>
+  <path d="M64 29 92 45v38L64 99 36 83V45z" fill="url(#core)" stroke="#30363d" stroke-width="3"/>
+  <path d="M49 42h14v19l17-19h16L75 65l23 31H81L64 73v23H49z" fill="#e6edf3"/>
+  <path d="M35 45 64 62l29-17M35 83l29-18 29 18" fill="none" stroke="#58a6ff" stroke-width="3" stroke-linecap="round" opacity="0.68"/>
+  <circle cx="35" cy="45" r="5" fill="#58a6ff"/>
+  <circle cx="93" cy="45" r="5" fill="#56d4dd"/>
+  <circle cx="35" cy="83" r="5" fill="#bc8cff"/>
+  <circle cx="93" cy="83" r="5" fill="#56d364"/>
+  <circle cx="64" cy="64" r="6" fill="#ffa657" stroke="#0d1117" stroke-width="2"/>
+</svg>

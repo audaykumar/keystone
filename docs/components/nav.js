@@ -5,6 +5,15 @@
   // Resolve the docs root from this script, independent of page depth.
   const root = new URL('../', document.currentScript.src);
   const indexUrl = new URL('index.html', root);
+  const logoUrl = new URL('assets/keystone-logo.svg', root);
+
+  if (!document.querySelector('link[rel="icon"]')) {
+    const icon = document.createElement('link');
+    icon.rel = 'icon';
+    icon.type = 'image/svg+xml';
+    icon.href = logoUrl;
+    document.head.appendChild(icon);
+  }
 
   if (!document.getElementById('sticky-nav-styles')) {
     const styles = document.createElement('style');
@@ -32,14 +41,35 @@
           right: 12px;
         }
       }
+
+      .nav-logo {
+        align-items: center;
+        display: inline-flex;
+        gap: 8px;
+      }
+
+      .nav-logo-mark {
+        display: block;
+        height: 28px;
+        width: 28px;
+      }
+
+      .nav-logo-text {
+        color: var(--text, #e6edf3);
+        font-weight: 800;
+        letter-spacing: 0;
+      }
     `;
     document.head.appendChild(styles);
   }
 
   el.innerHTML = `
     <nav class="site-nav">
-      <a class="nav-logo" href="${indexUrl}">⬡ keystone</a>
-      <span class="nav-sep">—</span>
+      <a class="nav-logo" href="${indexUrl}" aria-label="Keystone home">
+        <img class="nav-logo-mark" src="${logoUrl}" alt="" />
+        <span class="nav-logo-text">keystone</span>
+      </a>
+      <span class="nav-sep">|</span>
       <span class="nav-desc">Distributed systems &amp; fintech, built and broken.</span>
       <a class="nav-home sticky-home" href="${indexUrl}">← All topics</a>
     </nav>
