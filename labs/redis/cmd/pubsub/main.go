@@ -231,6 +231,7 @@ func main() {
 	flag.Parse()
 
 	// pubsub always exits non-zero on violation; -check is accepted for CLI consistency
+	_ = check
 
 	addr := os.Getenv("REDIS_ADDR")
 	if addr == "" {

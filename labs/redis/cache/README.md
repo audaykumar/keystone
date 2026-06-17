@@ -1,4 +1,4 @@
-# Cache — Thundering Herd
+# Cache --- Thundering Herd
 
 ## What this exposes
 
@@ -8,7 +8,7 @@ When a cached key expires, multiple concurrent readers miss simultaneously and a
 
 | Command | Purpose |
 |---|---|
-| `GET key` | Read from cache — returns value or nil on miss |
+| `GET key` | Read from cache --- returns value or nil on miss |
 | `SET key val EX ttl` | Write to cache with expiry |
 | `SET key val NX PX ttl` | Acquire fill lock (only succeeds if key absent) |
 | `DEL key` | Release fill lock |
@@ -18,22 +18,22 @@ When a cached key expires, multiple concurrent readers miss simultaneously and a
 
 | Mode | Behaviour |
 |---|---|
-| `naive` | Every worker calls backend on miss — N backend calls per expiry |
+| `naive` | Every worker calls backend on miss --- N backend calls per expiry |
 | `fix` | First worker to miss acquires a fill lock; others wait and retry |
 
 ## Run
 
 ```bash
 make up
-make break   # naive: 20 workers all hit backend — exit 1
-make test    # fix: single-flight, 1 backend call — exit 0
+make break   # naive: 20 workers all hit backend --- exit 1
+make test    # fix: single-flight, 1 backend call --- exit 0
 make cli     # redis-cli: try TTL product:42:price, KEYS *
 make down
 ```
 
 ## Invariant
 
-Backend calls per expiry cycle must be ≤ 2 (allowing a small race window). Naive mode violates this by calling the backend once per worker.
+Backend calls per expiry cycle must be -�� 2 (allowing a small race window). Naive mode violates this by calling the backend once per worker.
 
 ## Predicted vs observed
 

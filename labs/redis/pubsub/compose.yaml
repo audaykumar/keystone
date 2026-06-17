@@ -14,7 +14,10 @@ services:
 
   driver:
     build:
-      context: ./src
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        LAB: pubsub
     image: redis-pubsub-driver:local
     profiles: ["tools"]
     environment:

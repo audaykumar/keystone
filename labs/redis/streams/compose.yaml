@@ -14,7 +14,10 @@ services:
 
   driver:
     build:
-      context: ./src
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        LAB: streams
     image: redis-streams-driver:local
     profiles: ["tools"]
     environment:

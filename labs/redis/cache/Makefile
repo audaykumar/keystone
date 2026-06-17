@@ -12,7 +12,7 @@ build: ## Build the Go driver image
 	$(COMPOSE) build driver
 
 break: build ## Naive cache: reproduce thundering herd (expected exit 1)
-	-$(COMPOSE) run --rm driver -mode=naive -workers=20 -rounds=2 -check
+	$(COMPOSE) run --rm driver -mode=naive -workers=20 -rounds=2 -check
 
 test: build ## Fixed cache: single-flight prevents thundering herd (exit 0)
 	$(COMPOSE) run --rm driver -mode=fix -workers=20 -rounds=2 -check

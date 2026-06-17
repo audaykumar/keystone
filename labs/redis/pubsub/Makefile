@@ -12,13 +12,13 @@ build: ## Build the Go driver image
 	$(COMPOSE) build driver
 
 break: build ## Pub/Sub: offline subscriber misses messages permanently (expected exit 1)
-	-$(COMPOSE) run --rm driver -mode=pubsub -messages=30 -check
+	$(COMPOSE) run --rm driver -mode=pubsub -messages=30 -check
 
 test: build ## Streams: offline subscriber catches up on reconnect (exit 0)
 	$(COMPOSE) run --rm driver -mode=streams -messages=30 -check
 
-load: build ## Sustained pub/sub traffic
-	$(COMPOSE) run --rm driver -mode=pubsub -messages=100
+load: build ## Sustained stream traffic with replayable delivery
+	$(COMPOSE) run --rm driver -mode=streams -messages=100
 
 cli: ## Open redis-cli against the running instance
 	$(COMPOSE) exec redis redis-cli

@@ -12,13 +12,13 @@ build: ## Build the Go driver image
 	$(COMPOSE) build driver
 
 break: build ## Fixed-window: reproduce boundary burst (expected exit 1)
-	-$(COMPOSE) run --rm driver -mode=fixed -check
+	$(COMPOSE) run --rm driver -mode=fixed -check
 
 test: build ## Sliding-window: sorted-set enforces limit across boundary (exit 0)
 	$(COMPOSE) run --rm driver -mode=sliding -check
 
 load: build ## Sustained traffic with the sliding-window fix
-	$(COMPOSE) run --rm driver -mode=sliding -requests=500
+	$(COMPOSE) run --rm driver -mode=sliding -limit=50 -window=10
 
 cli: ## Open redis-cli against the running instance
 	$(COMPOSE) exec redis redis-cli

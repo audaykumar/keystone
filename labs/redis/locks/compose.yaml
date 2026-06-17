@@ -15,7 +15,10 @@ services:
 
   driver:
     build:
-      context: ./src
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        LAB: locks
     image: redis-locks-driver:local
     profiles: ["tools"]
     environment:

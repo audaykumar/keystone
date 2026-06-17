@@ -200,7 +200,7 @@ func runFix(ctx context.Context, rdb *redis.Client, messageCount int) {
 
 	recovered := 0
 	for {
-		result, err := rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+		messages, nextStartID, err := rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
 			Stream:   streamName,
 			Group:    groupName,
 			Consumer: recovery,
@@ -212,10 +212,10 @@ func runFix(ctx context.Context, rdb *redis.Client, messageCount int) {
 			fmt.Fprintf(os.Stderr, "XAUTOCLAIM: %v\n", err)
 			break
 		}
-		if len(result.Messages) == 0 {
+		if len(messages) == 0 {
 			break
 		}
-		for _, msg := range result.Messages {
+		for _, msg := range messages {
 			logf(cyan, "  XCLAIM id=%-22s  order=%s  (reclaimed from consumer-1)", msg.ID, msg.Values["order_id"])
 			// Idempotent processing: same order_id handled again after crash.
 			rdb.XAck(ctx, streamName, groupName, msg.ID)
@@ -223,7 +223,7 @@ func runFix(ctx context.Context, rdb *redis.Client, messageCount int) {
 			recovered++
 			processed++
 		}
-		if result.NextStartID == "0-0" {
+		if nextStartID == "0-0" {
 			break
 		}
 	}
@@ -260,6 +260,7 @@ func main() {
 	flag.Parse()
 
 	// streams always exits non-zero on violation; -check is accepted for CLI consistency
+	_ = check
 
 	addr := os.Getenv("REDIS_ADDR")
 	if addr == "" {

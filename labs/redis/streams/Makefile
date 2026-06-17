@@ -11,8 +11,8 @@ up: ## Start Redis and wait healthy
 build: ## Build the Go driver image
 	$(COMPOSE) build driver
 
-break: build ## Consumer crashes before XACK — messages stuck in PEL (expected exit 1)
-	-$(COMPOSE) run --rm driver -mode=break -messages=20 -check
+break: build ## Consumer crashes before XACK, messages stuck in PEL (expected exit 1)
+	$(COMPOSE) run --rm driver -mode=break -messages=20 -check
 
 test: build ## Recovery consumer uses XAUTOCLAIM to reclaim and reprocess (exit 0)
 	$(COMPOSE) run --rm driver -mode=fix -messages=20 -check

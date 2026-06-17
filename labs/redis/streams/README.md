@@ -1,4 +1,4 @@
-# Streams — Consumer Crash and PEL Recovery
+# Streams --- Consumer Crash and PEL Recovery
 
 ## What this exposes
 
@@ -19,14 +19,14 @@ Redis Streams deliver messages to consumer groups with at-least-once semantics. 
 
 | Mode | Behaviour |
 |---|---|
-| `break` | Consumer crashes mid-batch — messages stuck in PEL |
+| `break` | Consumer crashes mid-batch --- messages stuck in PEL |
 | `fix` | Recovery consumer uses XAUTOCLAIM to reclaim and process |
 
 ## Run
 
 ```bash
 make up
-make break   # consumer crashes — PEL grows, exit 1
+make break   # consumer crashes --- PEL grows, exit 1
 make test    # XAUTOCLAIM recovers stuck messages, exit 0
 make cli     # redis-cli: inspect PEL live
 make down

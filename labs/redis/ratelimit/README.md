@@ -1,4 +1,4 @@
-# Rate Limit — Fixed Window vs Sliding Window
+# Rate Limit --- Fixed Window vs Sliding Window
 
 ## What this exposes
 
@@ -17,7 +17,7 @@ Fixed-window rate limiting (INCR + EXPIRE) allows a 2× burst at window boundari
 
 ## Why Lua
 
-Both fixed and sliding window scripts use Lua `EVAL` — each request is fully atomic. The bug in fixed-window is not a race condition. It is a boundary semantics problem: the window counter resets on expiry, so two bursts on either side of a window boundary each see a fresh counter, allowing 2× the limit across a short real-time span.
+Both fixed and sliding window scripts use Lua `EVAL` --- each request is fully atomic. The bug in fixed-window is not a race condition. It is a boundary semantics problem: the window counter resets on expiry, so two bursts on either side of a window boundary each see a fresh counter, allowing 2× the limit across a short real-time span.
 
 ## Modes
 
@@ -30,8 +30,8 @@ Both fixed and sliding window scripts use Lua `EVAL` — each request is fully a
 
 ```bash
 make up
-make break   # fixed-window: boundary burst allows 2× limit — exit 1
-make test    # sliding-window: limit holds — exit 0
+make break   # fixed-window: boundary burst allows 2× limit --- exit 1
+make test    # sliding-window: limit holds --- exit 0
 make cli     # redis-cli: try ZRANGE rl:sliding 0 -1 WITHSCORES
 make down
 ```

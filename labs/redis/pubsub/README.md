@@ -1,4 +1,4 @@
-# Pub/Sub — Fire-and-Forget vs Streams
+# Pub/Sub --- Fire-and-Forget vs Streams
 
 ## What this exposes
 
@@ -16,15 +16,15 @@ Redis Pub/Sub delivers messages to currently-connected subscribers only. There i
 
 | Mode | Behaviour |
 |---|---|
-| `pubsub` | SUB-B goes offline mid-run — missed messages are gone |
-| `streams` | Same scenario via streams — consumer catches up on reconnect |
+| `pubsub` | SUB-B goes offline mid-run --- missed messages are gone |
+| `streams` | Same scenario via streams --- consumer catches up on reconnect |
 
 ## Run
 
 ```bash
 make up
-make break   # pubsub: offline subscriber misses messages — exit 1
-make test    # streams: offline consumer catches up — exit 0
+make break   # pubsub: offline subscriber misses messages --- exit 1
+make test    # streams: offline consumer catches up --- exit 0
 make cli     # redis-cli: PUBSUB CHANNELS, PUBSUB NUMSUB events
 make down
 ```

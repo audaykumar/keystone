@@ -12,7 +12,7 @@ build: ## Build the Go driver image
 	$(COMPOSE) build driver
 
 break: build ## Naive DEL: stale lock holder deletes successor (expected exit 1)
-	-$(COMPOSE) run --rm driver -mode=naive -workers=6 -iterations=20 -check
+	$(COMPOSE) run --rm driver -mode=naive -workers=6 -iterations=20 -check
 
 test: build ## Lua safe-DEL: only holder can release its own lock (exit 0)
 	$(COMPOSE) run --rm driver -mode=safe -workers=6 -iterations=20 -check
