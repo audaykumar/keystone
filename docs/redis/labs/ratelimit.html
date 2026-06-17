@@ -11,21 +11,25 @@
 <script src="../../components/nav.js?v=logo1"></script>
 
 <main>
-  <div class="crumbs"><a href="../overview.html">Redis</a><span>/</span><span>Rate limit lab</span></div>
-  <h1>Rate Limit Lab: Fixed Window vs Sliding Window</h1>
-  <p class="subtitle">This lab shows that a fixed window can allow a boundary burst, then uses a sorted-set sliding window to count requests across a rolling interval.</p>
+  <div class="crumbs"><a href="../overview.html">Redis</a><span>/</span><span>Rate limiting</span></div>
+  <h1>Rate Limiting: Fixed Window vs Sliding Window</h1>
+  <p class="subtitle">Rate limiting protects a service by deciding whether a caller has spent too much request budget. This page focuses on the Redis mechanics behind one common trap: fixed-window limiters can allow a burst at the boundary between two windows.</p>
 
-  <div class="hero-grid">
-    <div class="metric"><strong>Break mode</strong><span>Fixed window. Requests before and after a boundary each see a fresh counter.</span></div>
-    <div class="metric"><strong>Fix mode</strong><span>Sliding window. Recent timestamps remain counted after the clock boundary.</span></div>
-    <div class="metric"><strong>Smoothness</strong><span>The sliding window prevents 2x boundary bursts, but still allows a burst up to the limit.</span></div>
-  </div>
-
+  <h2>TLDR</h2>
   <div class="callout">
-    <strong>The point of the lab</strong>
-    This is not a race-condition demo. Both implementations use Lua, so the Redis update itself is atomic. The failure is the meaning of the window. Fixed window asks "how many requests since the last clock boundary?" Sliding window asks "how many requests in the last N seconds?"
+    <strong>Quick brief</strong>
+    <ul class="tldr-list">
+      <li><strong>What breaks:</strong> a fixed-window limiter can allow two full batches back-to-back when one lands just before a clock boundary and the next lands just after it.</li>
+      <li><strong>Why it breaks:</strong> the counter key changes at the boundary, so the second batch sees a fresh counter even though very little real time has passed.</li>
+      <li><strong>What improves it:</strong> a sliding window stores request timestamps in a Redis sorted set and counts only requests inside the last N seconds.</li>
+      <li><strong>Production warning:</strong> sliding windows prevent boundary bursts, but they are not fully smooth. A caller can still spend the whole limit immediately.</li>
+    </ul>
   </div>
 
+  <h2>Detailed Explanation</h2>
+  <p>A rate limiter needs a definition of "too many requests." The simplest definition is fixed window: allow up to N requests during each clock-aligned interval, such as 8 requests from 11:29:00 to 11:29:10.</p>
+  <p>The problem is that real users do not care about your clock boundary. If they send 8 requests at 11:29:09.8 and 8 more at 11:29:10.2, the fixed-window limiter sees two different windows. In real time, the service received 16 requests in roughly 400ms.</p>
+  <p>A sliding window changes the question. Instead of "how many requests since the last boundary?", it asks "how many requests are inside the last N seconds from right now?" That is why the second batch is denied in this lab: the first batch is still only about 400ms old.</p>
   <div class="diagram-shell">
     <div class="flow-diagram" data-lab-diagram data-detail-target="rate-detail">
       <div class="flow-row">
@@ -50,28 +54,22 @@
     </div>
   </div>
 
-  <h2>What Actually Fails</h2>
-  <p>The broken run sends one full batch just before a clock boundary and another full batch just after it. With a limit of 8 per 10 seconds, the fixed-window limiter can allow 16 requests in roughly 400ms.</p>
+  <h2>Concept Deep Dive</h2>
+  <h3>Fixed Window</h3>
+  <p>The fixed-window implementation uses one Redis counter per window. The important line is the window start calculation: <code>winStart = nowSec - (nowSec % windowSec)</code>. That value becomes part of the Redis key, such as <code>rl:fixed:1718609340</code>.</p>
+  <p><code>INCR</code> is atomic, and the script is atomic too. The bug is not concurrent clients corrupting the counter. The bug is the meaning of the counter: it forgets about the previous window exactly when the clock crosses the boundary.</p>
 
-  <figure class="terminal-shot">
-    <img src="assets/ratelimit-break-terminal.svg" alt="Terminal screenshot of make break showing a fixed-window boundary burst allowing 16 requests with limit 8." />
-    <figcaption>Captured from a real <code>make break</code> run. The fixed-window counter resets at the boundary and allows both batches.</figcaption>
-  </figure>
+  <h3>Sliding Window</h3>
+  <p>The sliding-window implementation uses a Redis sorted set. Each allowed request is stored as a member whose score is the request timestamp in milliseconds. Before checking the count, the script removes old scores with <code>ZREMRANGEBYSCORE</code>.</p>
+  <p>After cleanup, <code>ZCARD</code> tells us how many requests are still inside the rolling window. If that count is already at the limit, the request is denied. Otherwise the script records the new request with <code>ZADD</code>.</p>
 
-  <p>The fixed-window script did not lose an update. It counted exactly what it was asked to count. The problem is that two adjacent fixed windows can overlap into a very small real-time burst.</p>
+  <h3>Atomic Lua</h3>
+  <p>Both limiters run through <code>EVAL</code>. That means each check-and-update runs inside Redis without another command interleaving halfway through. Lua solves atomicity. It does not rescue a weak rate-limit model.</p>
 
-  <h2>Code Pointers</h2>
-  <table>
-    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
-    <tbody>
-      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L23-L38"><code>fixedWindowScript</code></a></td><td>Builds a counter key from the window start time. That creates the reset at the boundary.</td></tr>
-      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L42-L57"><code>slidingWindowScript</code></a></td><td>Stores request timestamps in a sorted set and removes only entries older than the rolling window.</td></tr>
-      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L102-L161"><code>runFixed</code></a></td><td>Waits until 200ms before a clock boundary, sends the first batch, waits 200ms after the boundary, then sends the burst.</td></tr>
-      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L168-L226"><code>runSliding</code></a></td><td>Uses the same timing as <code>runFixed</code>, but the first batch is still inside the rolling window when the second batch arrives.</td></tr>
-    </tbody>
-  </table>
+  <h3>Smoothness</h3>
+  <p>Sliding window is stricter than fixed window at boundaries, but it is not a smooth limiter. With a limit of 8 per 10 seconds, a caller can still send 8 requests immediately. A truly smooth limiter needs spacing, usually with GCRA, leaky bucket, or a token bucket configured with a small burst.</p>
 
-  <h2>Redis Commands In This Lab</h2>
+  <h3>Redis Commands In This Topic</h3>
   <div class="command-grid">
     <div class="command-card"><h3><code>EVAL script keys args</code></h3><p>The Go driver sends each limiter decision to Redis as one script. That keeps check plus update atomic.</p></div>
     <div class="command-card"><h3><code>INCR rl:fixed:&lt;start&gt;</code></h3><p>Counts requests in one fixed window. The suffix changes when the clock crosses the boundary.</p></div>
@@ -82,7 +80,8 @@
     <div class="command-card"><h3><code>PEXPIRE rl:sliding ms</code></h3><p>Lets Redis delete the sorted set after the user stops sending requests.</p></div>
   </div>
 
-  <h2>Fixed-Window Lua</h2>
+  <h2>Lua Script Breakdown</h2>
+  <h3>Fixed-Window Script</h3>
   <pre><code>local count = redis.call('INCR', key)
 if count == 1 then
   redis.call('EXPIRE', key, windowSec * 2)
@@ -97,7 +96,7 @@ return {1, count, remaining}</code></pre>
     <div class="script-step"><code>return {0 or 1, count, remaining}</code><p>Returns allow/deny, the counter value, and seconds until the next fixed-window reset.</p></div>
   </div>
 
-  <h2>Sliding-Window Lua</h2>
+  <h3>Sliding-Window Script</h3>
   <pre><code>redis.call('ZREMRANGEBYSCORE', key, 0, now - windowMs)
 local count = redis.call('ZCARD', key)
 if count >= limit then return {0, count} end
@@ -112,21 +111,39 @@ return {1, count + 1}</code></pre>
     <div class="script-step"><code>PEXPIRE</code><p>Cleans up the key after activity stops. The limiter would still work without this, but abandoned keys would accumulate.</p></div>
   </div>
 
-  <h2>How The Fixed Run Should Look</h2>
-  <p>The evidence is in the result block: <code>phase-1 allowed = 8</code>, <code>phase-2 allowed = 8</code>, and <code>total in ~400ms span = 16</code>. That is why <code>make break</code> exits 1.</p>
+  <h2>Lab Details And Output</h2>
+  <p>The runnable lab is under <code>labs/redis/ratelimit</code>. It deliberately waits for a clock boundary, sends 8 requests just before it, then sends 8 more just after it.</p>
 
-  <h2>How The Sliding Run Should Look</h2>
+  <div class="run-grid">
+    <div class="run-card"><h3><code>make break</code></h3><p>Runs fixed-window mode. It should fail because both batches are allowed.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>Runs sliding-window mode. It should pass because the second batch is denied.</p></div>
+    <div class="run-card"><h3><code>make load</code></h3><p>Runs a larger sliding-window scenario with a higher limit.</p></div>
+  </div>
+
+  <h3>Fixed Window Output</h3>
+  <p>The evidence is in the result block: <code>phase-1 allowed = 8</code>, <code>phase-2 allowed = 8</code>, and <code>total in ~400ms span = 16</code>. That is why <code>make break</code> exits 1.</p>
+  <figure class="terminal-shot">
+    <img src="assets/ratelimit-break-terminal.svg" alt="Terminal screenshot of make break showing a fixed-window boundary burst allowing 16 requests with limit 8." />
+    <figcaption>Captured from a real <code>make break</code> run. The fixed-window counter resets at the boundary and allows both batches.</figcaption>
+  </figure>
+
+  <h3>Sliding Window Output</h3>
+  <p>The sliding-window run uses the same timing, but <code>phase-2 denied = 8</code>. The first batch is still inside the rolling 10-second window, so the second batch cannot spend a fresh budget.</p>
   <figure class="terminal-shot">
     <img src="assets/ratelimit-test-terminal.svg" alt="Terminal screenshot of make test showing sliding-window rate limiting denying the second burst." />
     <figcaption>Captured from a real <code>make test</code> run. Phase-1 entries remain inside the rolling window, so phase-2 is denied.</figcaption>
   </figure>
 
-  <h2>Run Targets</h2>
-  <div class="run-grid">
-    <div class="run-card"><h3><code>make break</code></h3><p>Fixed window. Look for both phases allowed and total allowed above the configured limit.</p></div>
-    <div class="run-card"><h3><code>make test</code></h3><p>Sliding window. Look for phase-2 denies because phase-1 timestamps are still inside the window.</p></div>
-    <div class="run-card"><h3><code>make load</code></h3><p>Larger sliding-window run with a higher limit.</p></div>
-  </div>
+  <h2>Code Pointers</h2>
+  <table>
+    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L23-L38"><code>fixedWindowScript</code></a></td><td>Builds a counter key from the window start time. That creates the reset at the boundary.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L42-L57"><code>slidingWindowScript</code></a></td><td>Stores request timestamps in a sorted set and removes only entries older than the rolling window.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L102-L161"><code>runFixed</code></a></td><td>Waits until 200ms before a clock boundary, sends the first batch, waits 200ms after the boundary, then sends the burst.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L168-L226"><code>runSliding</code></a></td><td>Uses the same timing as <code>runFixed</code>, but the first batch is still inside the rolling window when the second batch arrives.</td></tr>
+    </tbody>
+  </table>
 
   <h2>Production Notes</h2>
   <ul>

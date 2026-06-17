@@ -162,6 +162,30 @@ th {
   text-transform: uppercase;
 }
 
+.tldr-list {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 14px 0 0;
+}
+
+.tldr-list li {
+  background: rgb(13 17 23 / 40%);
+  border: 1px solid rgb(88 166 255 / 22%);
+  border-radius: 8px;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.tldr-list strong {
+  color: var(--text);
+  display: inline;
+  font-size: 14px;
+  letter-spacing: 0;
+  margin: 0;
+  text-transform: none;
+}
+
 .diagram-shell {
   background: #101722;
   border: 1px solid var(--border);
