@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redis Streams Lab | keystone</title>
+  <link rel="stylesheet" href="lab.css" />
+</head>
+<body>
+<div id="site-nav"></div>
+<script src="../../components/nav.js"></script>
+
+<main>
+  <div class="crumbs"><a href="../overview.html">Redis</a><span>/</span><span>Streams lab</span></div>
+  <h1>Streams Lab: Consumer Crash And PEL Recovery</h1>
+  <p class="subtitle">This lab shows how Redis Streams keep delivered-but-unacknowledged messages in a Pending Entries List, then recovers them with <code>XAUTOCLAIM</code>.</p>
+
+  <div class="hero-grid">
+    <div class="metric"><strong>Break mode</strong><span>Consumer reads messages and crashes before acknowledging half of them.</span></div>
+    <div class="metric"><strong>Fix mode</strong><span>Recovery consumer claims idle pending messages and acknowledges them.</span></div>
+    <div class="metric"><strong>Invariant</strong><span>All produced messages should be processed and PEL should end at zero.</span></div>
+  </div>
+
+  <div class="diagram-shell">
+    <div class="flow-diagram" data-lab-diagram data-detail-target="streams-detail">
+      <div class="flow-row">
+        <button class="flow-node" type="button" data-kind="Producer" data-title="XADD creates stream entries" data-body="Each message becomes an ordered stream entry under orders, with fields such as order_id, item, and qty."><strong>producer</strong><span>XADD orders</span></button>
+        <div class="flow-arrow">XREADGROUP</div>
+        <button class="flow-node redis warn" type="button" data-kind="Stream group" data-title="Consumer group delivery" data-body="XREADGROUP delivers new entries to consumer-1 and records them in the group's Pending Entries List until XACK."><strong>orders group</strong><span>processors</span></button>
+        <div class="flow-arrow">crash</div>
+        <button class="flow-node bad" type="button" data-kind="PEL" data-title="Messages stuck pending" data-body="When consumer-1 crashes before XACK, the entries stay pending. They are not delivered as new messages to another consumer automatically."><strong>PEL</strong><span>stuck entries</span></button>
+      </div>
+      <div class="flow-row">
+        <button class="flow-node good" type="button" data-kind="Recovery" data-title="Wait until messages are idle" data-body="The recovery path waits until pending messages are idle for more than claimAfter. In the lab this is 2 seconds."><strong>recovery</strong><span>idle threshold</span></button>
+        <div class="flow-arrow">XAUTOCLAIM</div>
+        <button class="flow-node redis good" type="button" data-kind="Claim" data-title="Steal pending entries" data-body="XAUTOCLAIM transfers ownership of old pending entries to consumer-recovery and returns the claimed messages."><strong>claim stuck</strong><span>consumer-recovery</span></button>
+        <div class="flow-arrow">XACK</div>
+        <button class="flow-node good" type="button" data-kind="Done" data-title="Acknowledge after processing" data-body="After idempotent processing, XACK removes each entry from the PEL. Pending count should return to zero."><strong>PEL empty</strong><span>all processed</span></button>
+      </div>
+    </div>
+    <div class="detail-panel" id="streams-detail">
+      <div class="eyebrow" data-detail-kind></div>
+      <h3 data-detail-title></h3>
+      <p data-detail-body></p>
+    </div>
+  </div>
+
+  <h2>Redis Commands</h2>
+  <div class="command-grid">
+    <div class="command-card"><h3><code>XGROUP CREATE ... MKSTREAM</code></h3><p>Creates a consumer group. <code>MKSTREAM</code> creates the stream if missing.</p></div>
+    <div class="command-card"><h3><code>XADD stream * field value</code></h3><p>Appends a message to the stream. <code>*</code> asks Redis to assign the entry id.</p></div>
+    <div class="command-card"><h3><code>XREADGROUP GROUP g c STREAMS s &gt;</code></h3><p>Reads new messages for a consumer group and assigns them to one consumer.</p></div>
+    <div class="command-card"><h3><code>XACK stream group id</code></h3><p>Marks a delivered message as processed and removes it from the PEL.</p></div>
+    <div class="command-card"><h3><code>XPENDING stream group</code></h3><p>Reports how many messages are pending and which consumers own them.</p></div>
+    <div class="command-card"><h3><code>XAUTOCLAIM stream group consumer min-idle start</code></h3><p>Claims pending messages that have been idle longer than the configured threshold.</p></div>
+  </div>
+
+  <h2>Pending Entries List</h2>
+  <p>The PEL is Redis Streams' memory of messages that were delivered to a consumer but not acknowledged. This is what makes streams useful for work queues where crash recovery matters.</p>
+  <table>
+    <thead><tr><th>State</th><th>Meaning</th><th>Command</th></tr></thead>
+    <tbody>
+      <tr><td>New message</td><td>Entry exists in stream but has not been delivered to this group yet.</td><td><code>XREADGROUP ... &gt;</code></td></tr>
+      <tr><td>Pending</td><td>Delivered to a consumer, but not acknowledged.</td><td><code>XPENDING</code></td></tr>
+      <tr><td>Claimed</td><td>Recovery consumer takes ownership after idle timeout.</td><td><code>XAUTOCLAIM</code></td></tr>
+      <tr><td>Done</td><td>Processed and removed from PEL.</td><td><code>XACK</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Run Targets</h2>
+  <div class="run-grid">
+    <div class="run-card"><h3><code>make break</code></h3><p>Consumer crashes halfway. Look for <code>XPENDING total</code> above zero.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>Recovery consumer uses <code>XAUTOCLAIM</code>. Look for recovered messages and PEL zero.</p></div>
+    <div class="run-card"><h3><code>make load</code></h3><p>Runs the same recovery pattern with more messages.</p></div>
+  </div>
+
+  <h2>Production Notes</h2>
+  <ul>
+    <li>Stream processing is at-least-once. A message can be processed more than once after crashes or retries.</li>
+    <li>Handlers should be idempotent, usually with a durable processed-message marker or business idempotency key.</li>
+    <li><code>XAUTOCLAIM</code> needs a sane idle threshold. Too low can steal work from slow but healthy consumers.</li>
+    <li>Streams keep data until trimmed. Plan retention with <code>XTRIM</code> or maxlen policies.</li>
+  </ul>
+
+  <div class="lab-nav">
+    <a href="cache.html">Cache</a>
+    <a href="ratelimit.html">Rate limit</a>
+    <a href="locks.html">Locks</a>
+    <a href="pubsub.html">Pub/Sub</a>
+  </div>
+</main>
+
+<script src="lab.js"></script>
+</body>
+</html>

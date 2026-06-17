@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redis Locks Lab | keystone</title>
+  <link rel="stylesheet" href="lab.css" />
+</head>
+<body>
+<div id="site-nav"></div>
+<script src="../../components/nav.js"></script>
+
+<main>
+  <div class="crumbs"><a href="../overview.html">Redis</a><span>/</span><span>Locks lab</span></div>
+  <h1>Locks Lab: Wrong-Owner DEL</h1>
+  <p class="subtitle">This lab shows a subtle Redis lock bug: a worker whose lock expired can wake up and delete a lock now owned by another worker.</p>
+
+  <div class="hero-grid">
+    <div class="metric"><strong>Break mode</strong><span>Acquire with <code>SET NX PX</code>, release with plain <code>DEL</code>.</span></div>
+    <div class="metric"><strong>Fix mode</strong><span>Release with Lua compare-and-delete.</span></div>
+    <div class="metric"><strong>Invariant</strong><span>No worker should delete a successor's lock.</span></div>
+  </div>
+
+  <div class="diagram-shell">
+    <div class="flow-diagram" data-lab-diagram data-detail-target="lock-detail">
+      <div class="flow-row">
+        <button class="flow-node good" type="button" data-kind="Worker A" data-title="A acquires token A" data-body="SET lock:inventory tokenA NX PX 200 succeeds. A starts work that lasts longer than the TTL."><strong>A owns lock</strong><span>token A</span></button>
+        <div class="flow-arrow">TTL expires</div>
+        <button class="flow-node warn" type="button" data-kind="Worker B" data-title="B acquires token B" data-body="After 200ms the key expires. B can acquire the same lock while A is still working. This lab intentionally creates that timing."><strong>B owns lock</strong><span>token B</span></button>
+        <div class="flow-arrow">plain DEL</div>
+        <button class="flow-node bad" type="button" data-kind="Bug" data-title="A deletes B's lock" data-body="A finishes and calls DEL without checking the token. Redis deletes the key even though B owns it now."><strong>wrong-owner DEL</strong><span>B unprotected</span></button>
+      </div>
+      <div class="flow-row">
+        <button class="flow-node good" type="button" data-kind="Worker A" data-title="A finishes late" data-body="A still finishes after the TTL. The safe mode does not pretend this fixes concurrent occupancy."><strong>A finishes</strong><span>late holder</span></button>
+        <div class="flow-arrow">EVAL</div>
+        <button class="flow-node redis good" type="button" data-kind="Lua" data-title="Compare token inside Redis" data-body="The Lua script reads the current lock value and deletes only if it equals A's token. The read and delete are one atomic script."><strong>GET == token?</strong><span>atomic check</span></button>
+        <div class="flow-arrow">mismatch</div>
+        <button class="flow-node good" type="button" data-kind="Safe outcome" data-title="B's lock survives" data-body="When Redis sees token B, the script returns 0 and skips DEL. A cannot erase B's ownership."><strong>skip DEL</strong><span>successor safe</span></button>
+      </div>
+    </div>
+    <div class="detail-panel" id="lock-detail">
+      <div class="eyebrow" data-detail-kind></div>
+      <h3 data-detail-title></h3>
+      <p data-detail-body></p>
+    </div>
+  </div>
+
+  <h2>Redis Commands</h2>
+  <div class="command-grid">
+    <div class="command-card"><h3><code>SET key value NX PX ttl</code></h3><p>Acquires the lock only when missing. <code>NX</code> means do not overwrite an existing owner. <code>PX</code> sets TTL in milliseconds.</p></div>
+    <div class="command-card"><h3><code>GET key</code></h3><p>Reads the current lock owner token. The token is the proof of ownership.</p></div>
+    <div class="command-card"><h3><code>DEL key</code></h3><p>Deletes the lock. Plain <code>DEL</code> is unsafe because it does not verify ownership.</p></div>
+    <div class="command-card"><h3><code>EVAL script keys args</code></h3><p>Runs compare-and-delete atomically so no other command interleaves between <code>GET</code> and <code>DEL</code>.</p></div>
+  </div>
+
+  <h2>Lua Release Script</h2>
+  <pre><code>if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+else
+  return 0
+end</code></pre>
+  <div class="script-breakdown">
+    <div class="script-step"><code>KEYS[1]</code><p>The lock key, <code>lock:inventory</code>.</p></div>
+    <div class="script-step"><code>ARGV[1]</code><p>The caller's ownership token, such as <code>w3-i7</code>.</p></div>
+    <div class="script-step"><code>redis.call('GET', KEYS[1])</code><p>Reads the current owner inside Redis.</p></div>
+    <div class="script-step"><code>== ARGV[1]</code><p>Checks whether the caller still owns the lock.</p></div>
+    <div class="script-step"><code>DEL</code><p>Deletes only on token match. Token mismatch returns 0 and preserves the successor's lock.</p></div>
+  </div>
+
+  <h2>Run Targets</h2>
+  <div class="run-grid">
+    <div class="run-card"><h3><code>make break</code></h3><p>Naive release. Look for <code>WRONG-OWNER DEL</code> lines.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>Lua release. Look for expired holders skipping <code>DEL</code>.</p></div>
+    <div class="run-card"><h3><code>make load</code></h3><p>More workers and iterations to stress the release invariant.</p></div>
+  </div>
+
+  <h2>Important Limit</h2>
+  <div class="callout">
+    <strong>What this fix does not solve</strong>
+    The lab makes work duration longer than the lock TTL. That means concurrent critical-section occupancy can still happen. Lua compare-and-delete only prevents deleting another worker's lock. Correct writes often also need lock extension, idempotency, or fencing tokens.
+  </div>
+
+  <div class="lab-nav">
+    <a href="cache.html">Cache</a>
+    <a href="ratelimit.html">Rate limit</a>
+    <a href="streams.html">Streams</a>
+    <a href="pubsub.html">Pub/Sub</a>
+  </div>
+</main>
+
+<script src="lab.js"></script>
+</body>
+</html>

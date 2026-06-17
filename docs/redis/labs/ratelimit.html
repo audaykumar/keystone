@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redis Rate Limit Lab | keystone</title>
+  <link rel="stylesheet" href="lab.css" />
+</head>
+<body>
+<div id="site-nav"></div>
+<script src="../../components/nav.js"></script>
+
+<main>
+  <div class="crumbs"><a href="../overview.html">Redis</a><span>/</span><span>Rate limit lab</span></div>
+  <h1>Rate Limit Lab: Fixed Window vs Sliding Window</h1>
+  <p class="subtitle">This lab shows that a fixed window can allow a boundary burst, then uses a sorted-set sliding window to count requests across a rolling interval.</p>
+
+  <div class="hero-grid">
+    <div class="metric"><strong>Break mode</strong><span>Fixed window. Requests before and after a boundary each see a fresh counter.</span></div>
+    <div class="metric"><strong>Fix mode</strong><span>Sliding window. Recent timestamps remain counted after the clock boundary.</span></div>
+    <div class="metric"><strong>Smoothness</strong><span>The sliding window prevents 2x boundary bursts, but still allows a burst up to the limit.</span></div>
+  </div>
+
+  <div class="diagram-shell">
+    <div class="flow-diagram" data-lab-diagram data-detail-target="rate-detail">
+      <div class="flow-row">
+        <button class="flow-node bad" type="button" data-kind="Phase 1" data-title="Before boundary" data-body="The driver sends the full limit shortly before the fixed window changes. The counter reaches the limit but still allows the requests."><strong>8 requests</strong><span>t = 9.8s</span></button>
+        <div class="flow-arrow">INCR</div>
+        <button class="flow-node redis bad" type="button" data-kind="Fixed key" data-title="Clock-aligned counter" data-body="The key includes the window start time. When the clock crosses the boundary, the next request uses a different counter key."><strong>rl:fixed:0</strong><span>count 8</span></button>
+        <div class="flow-arrow">boundary</div>
+        <button class="flow-node bad" type="button" data-kind="Phase 2" data-title="After boundary" data-body="The second burst lands just after the boundary. Fixed window sees a new key and allows another full limit."><strong>8 more</strong><span>t = 10.2s</span></button>
+      </div>
+      <div class="flow-row">
+        <button class="flow-node good" type="button" data-kind="Request" data-title="Rolling time check" data-body="Each request uses the current millisecond timestamp as a sorted-set score. Old scores are removed first."><strong>request now</strong><span>timestamp score</span></button>
+        <div class="flow-arrow">ZREMRANGEBYSCORE</div>
+        <button class="flow-node redis good" type="button" data-kind="Sorted set" data-title="Current rolling window" data-body="Only requests within the last window remain in rl:sliding. Boundary time does not reset this set."><strong>rl:sliding</strong><span>recent scores</span></button>
+        <div class="flow-arrow">ZCARD</div>
+        <button class="flow-node good" type="button" data-kind="Decision" data-title="Allow or deny" data-body="If ZCARD is already at the limit, the request is denied. Otherwise Redis adds the timestamp member and refreshes the key TTL."><strong>allow/deny</strong><span>count vs limit</span></button>
+      </div>
+    </div>
+    <div class="detail-panel" id="rate-detail">
+      <div class="eyebrow" data-detail-kind></div>
+      <h3 data-detail-title></h3>
+      <p data-detail-body></p>
+    </div>
+  </div>
+
+  <h2>Redis Commands</h2>
+  <div class="command-grid">
+    <div class="command-card"><h3><code>INCR key</code></h3><p>Atomically increments an integer counter. Used by the fixed-window limiter.</p></div>
+    <div class="command-card"><h3><code>EXPIRE key seconds</code></h3><p>Sets a TTL on the fixed-window counter so old window keys disappear.</p></div>
+    <div class="command-card"><h3><code>ZADD key score member</code></h3><p>Adds one request timestamp to the sorted set. Score is request time in milliseconds.</p></div>
+    <div class="command-card"><h3><code>ZREMRANGEBYSCORE key 0 cutoff</code></h3><p>Deletes request timestamps older than the rolling window.</p></div>
+    <div class="command-card"><h3><code>ZCARD key</code></h3><p>Counts how many request timestamps remain after cleanup.</p></div>
+    <div class="command-card"><h3><code>PEXPIRE key ms</code></h3><p>Applies a millisecond TTL to the sliding-window sorted set.</p></div>
+    <div class="command-card"><h3><code>EVAL script keys args</code></h3><p>Runs the limiter check and update atomically on the Redis server.</p></div>
+  </div>
+
+  <h2>Fixed-Window Lua</h2>
+  <pre><code>local count = redis.call('INCR', key)
+if count == 1 then
+  redis.call('EXPIRE', key, windowSec * 2)
+end
+if count > limit then return {0, count, remaining} end
+return {1, count, remaining}</code></pre>
+  <div class="script-breakdown">
+    <div class="script-step"><code>winStart = nowSec - (nowSec % windowSec)</code><p>Rounds time down to a clock-aligned window. This is why the boundary burst exists.</p></div>
+    <div class="script-step"><code>key = KEYS[1] .. ':' .. winStart</code><p>Creates one Redis counter per window start.</p></div>
+    <div class="script-step"><code>INCR</code><p>Counts this request in the current fixed window.</p></div>
+    <div class="script-step"><code>EXPIRE</code><p>Sets cleanup TTL only when the counter is first created.</p></div>
+    <div class="script-step"><code>return {0 or 1, count, remaining}</code><p>Returns allow/deny, current count, and seconds until reset.</p></div>
+  </div>
+
+  <h2>Sliding-Window Lua</h2>
+  <pre><code>redis.call('ZREMRANGEBYSCORE', key, 0, now - windowMs)
+local count = redis.call('ZCARD', key)
+if count >= limit then return {0, count} end
+redis.call('ZADD', key, now, uid)
+redis.call('PEXPIRE', key, windowMs)
+return {1, count + 1}</code></pre>
+  <div class="script-breakdown">
+    <div class="script-step"><code>ZREMRANGEBYSCORE</code><p>Removes requests that are older than the rolling window.</p></div>
+    <div class="script-step"><code>ZCARD</code><p>Counts requests still inside the window.</p></div>
+    <div class="script-step"><code>count >= limit</code><p>Denies before adding this request if the window is already full.</p></div>
+    <div class="script-step"><code>ZADD</code><p>Records the accepted request with a unique member id.</p></div>
+    <div class="script-step"><code>PEXPIRE</code><p>Cleans up the key after activity stops.</p></div>
+  </div>
+
+  <h2>Run Targets</h2>
+  <div class="run-grid">
+    <div class="run-card"><h3><code>make break</code></h3><p>Fixed window. Look for both phases allowed and total allowed above the configured limit.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>Sliding window. Look for phase-2 denies because phase-1 timestamps are still inside the window.</p></div>
+    <div class="run-card"><h3><code>make load</code></h3><p>Larger sliding-window run with a higher limit.</p></div>
+  </div>
+
+  <h2>Production Notes</h2>
+  <ul>
+    <li>Fixed window is simple, but it allows boundary bursts.</li>
+    <li>Sliding window prevents boundary bursts, but it is not a strict smooth limiter.</li>
+    <li>For smooth spacing, use GCRA or a leaky-bucket style limiter with <code>next_allowed_at</code> or theoretical arrival time.</li>
+    <li>Use server-side time or consistent app time when multiple app instances apply the same limiter.</li>
+  </ul>
+
+  <div class="lab-nav">
+    <a href="cache.html">Cache</a>
+    <a href="locks.html">Locks</a>
+    <a href="streams.html">Streams</a>
+    <a href="pubsub.html">Pub/Sub</a>
+  </div>
+</main>
+
+<script src="lab.js"></script>
+</body>
+</html>

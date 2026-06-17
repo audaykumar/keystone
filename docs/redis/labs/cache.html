@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redis Cache Lab | keystone</title>
+  <link rel="stylesheet" href="lab.css" />
+</head>
+<body>
+<div id="site-nav"></div>
+<script src="../../components/nav.js"></script>
+
+<main>
+  <div class="crumbs"><a href="../overview.html">Redis</a><span>/</span><span>Cache lab</span></div>
+  <h1>Cache Lab: Thundering Herd</h1>
+  <p class="subtitle">This lab shows what happens when many workers miss the same expired cache key at the same time, then fixes it with a short Redis fill lock.</p>
+
+  <div class="hero-grid">
+    <div class="metric"><strong>Break mode</strong><span>Naive cache-aside. Every worker calls the backend on a miss.</span></div>
+    <div class="metric"><strong>Fix mode</strong><span>One worker acquires <code>SET NX PX</code>. Others wait and retry <code>GET</code>.</span></div>
+    <div class="metric"><strong>Invariant</strong><span>Backend calls should be close to one per cache expiry cycle.</span></div>
+  </div>
+
+  <div class="diagram-shell">
+    <div class="flow-diagram" data-lab-diagram data-detail-target="cache-detail">
+      <div class="flow-row">
+        <button class="flow-node" type="button" data-kind="Caller" data-title="Workers arrive together" data-body="The driver releases all workers through one gate, so they read the same key at nearly the same instant. This creates the herd."><strong>20 workers</strong><span>same moment</span></button>
+        <div class="flow-arrow">GET</div>
+        <button class="flow-node redis bad" type="button" data-kind="Redis key" data-title="Expired cache key" data-body="The key product:42:price is missing after its TTL expires. In naive mode every worker observes the same miss."><strong>product:42:price</strong><span>missing</span></button>
+        <div class="flow-arrow">MISS</div>
+        <button class="flow-node bad" type="button" data-kind="Backend" data-title="Backend stampede" data-body="Each worker performs the slow backend call. That can overload a database or downstream API even though all workers need the same value."><strong>DB/API</strong><span>many calls</span></button>
+      </div>
+      <div class="flow-row">
+        <button class="flow-node" type="button" data-kind="Caller" data-title="Workers arrive together" data-body="Same timing as the broken run. The difference is the fill path after a miss."><strong>20 workers</strong><span>same moment</span></button>
+        <div class="flow-arrow">SET NX PX</div>
+        <button class="flow-node redis good" type="button" data-kind="Fill lock" data-title="One fill owner" data-body="Only one worker creates product:42:price:filling. NX means create only if missing. PX gives the lock an expiry so a crash does not block forever."><strong>filling lock</strong><span>one winner</span></button>
+        <div class="flow-arrow">SET value</div>
+        <button class="flow-node good" type="button" data-kind="Cache hit" data-title="Other workers retry" data-body="Workers that lose the fill lock sleep briefly and retry GET until the winning worker stores the value."><strong>cache hit</strong><span>one backend call</span></button>
+      </div>
+    </div>
+    <div class="detail-panel" id="cache-detail">
+      <div class="eyebrow" data-detail-kind></div>
+      <h3 data-detail-title></h3>
+      <p data-detail-body></p>
+    </div>
+  </div>
+
+  <h2>Redis Commands</h2>
+  <div class="command-grid">
+    <div class="command-card"><h3><code>GET key</code></h3><p>Reads the cached value. Redis returns nil when the key does not exist or has expired.</p></div>
+    <div class="command-card"><h3><code>SET key value EX ttl</code></h3><p>Stores the backend result with a TTL. In this lab the Go client passes a duration, which Redis applies as expiry.</p></div>
+    <div class="command-card"><h3><code>SET key value NX PX ttl</code></h3><p>Creates a short fill lock only if it does not already exist. This is the single-flight gate.</p></div>
+    <div class="command-card"><h3><code>DEL key</code></h3><p>Deletes the fill lock after the winner stores the cache value. This lock protects recomputation, not business correctness.</p></div>
+  </div>
+
+  <h2>Keys In Redis</h2>
+  <table>
+    <thead><tr><th>Key</th><th>Type</th><th>Purpose</th><th>Expiry</th></tr></thead>
+    <tbody>
+      <tr><td><code>product:42:price</code></td><td>String</td><td>Cached product price.</td><td>3 seconds in the lab.</td></tr>
+      <tr><td><code>product:42:price:filling</code></td><td>String</td><td>Temporary marker for the worker filling the cache.</td><td>10 seconds in the lab.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Run Targets</h2>
+  <div class="run-grid">
+    <div class="run-card"><h3><code>make break</code></h3><p>Runs naive mode. Look for many <code>GET MISS</code> lines and many backend calls.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>Runs fix mode. Look for one backend call per round and many workers waiting for the fill.</p></div>
+    <div class="run-card"><h3><code>make load</code></h3><p>Runs a bigger fixed scenario with more workers and rounds.</p></div>
+  </div>
+
+  <h2>How To Read The Output</h2>
+  <p>The important line is <code>backend calls</code>. In broken mode it grows with worker count. In fixed mode it should stay close to the number of expiry rounds.</p>
+
+  <h2>Production Notes</h2>
+  <ul>
+    <li>This is cache stampede protection, not a general distributed lock for correctness.</li>
+    <li>The fill lock TTL must be longer than the expected backend fill time.</li>
+    <li>If the backend call fails, the winner should release the fill lock or let it expire quickly.</li>
+    <li>Hot keys may need jittered TTLs so many keys do not expire at the same time.</li>
+  </ul>
+
+  <div class="lab-nav">
+    <a href="ratelimit.html">Rate limit</a>
+    <a href="locks.html">Locks</a>
+    <a href="streams.html">Streams</a>
+    <a href="pubsub.html">Pub/Sub</a>
+  </div>
+</main>
+
+<script src="lab.js"></script>
+</body>
+</html>

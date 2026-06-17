@@ -910,6 +910,31 @@ TTL product:42</code></pre>
     </tbody>
   </table>
 
+  <h2>Hands-On Redis Labs</h2>
+  <p>The lab pages explain the exact Redis commands, key shapes, Lua scripts, terminal output, and production gotchas behind each runnable experiment.</p>
+  <div class="grid">
+    <div class="panel">
+      <h3><a href="labs/cache.html">Cache stampede</a></h3>
+      <p>Why many workers call the backend after the same key expires, and how a short fill lock reduces the herd.</p>
+    </div>
+    <div class="panel">
+      <h3><a href="labs/ratelimit.html">Rate limiting</a></h3>
+      <p>Fixed-window boundary bursts, sorted-set sliding windows, and why sliding windows are not fully smooth.</p>
+    </div>
+    <div class="panel">
+      <h3><a href="labs/locks.html">Locks</a></h3>
+      <p><code>SET NX PX</code>, ownership tokens, and Lua compare-and-delete for safe release.</p>
+    </div>
+    <div class="panel">
+      <h3><a href="labs/streams.html">Streams</a></h3>
+      <p>Consumer groups, pending entries, crash recovery, <code>XPENDING</code>, and <code>XAUTOCLAIM</code>.</p>
+    </div>
+    <div class="panel">
+      <h3><a href="labs/pubsub.html">Pub/Sub</a></h3>
+      <p>Fire-and-forget fan-out compared with stream-backed replay and acknowledgement.</p>
+    </div>
+  </div>
+
   <h2>Lua And Lua Scripts</h2>
   <p>Lua is a small embedded programming language. Redis embeds Lua 5.1 so clients can send scripts with <code>EVAL</code> or load them and call by hash. Scripts run on the Redis server, next to the data.</p>
 

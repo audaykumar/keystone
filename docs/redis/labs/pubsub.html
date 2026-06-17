@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redis Pub/Sub Lab | keystone</title>
+  <link rel="stylesheet" href="lab.css" />
+</head>
+<body>
+<div id="site-nav"></div>
+<script src="../../components/nav.js"></script>
+
+<main>
+  <div class="crumbs"><a href="../overview.html">Redis</a><span>/</span><span>Pub/Sub lab</span></div>
+  <h1>Pub/Sub Lab: Fire-And-Forget vs Streams</h1>
+  <p class="subtitle">This lab compares Redis Pub/Sub with Redis Streams by taking one subscriber offline in the middle of a message run.</p>
+
+  <div class="hero-grid">
+    <div class="metric"><strong>Break mode</strong><span><code>PUBLISH</code> sends only to subscribers connected at that moment.</span></div>
+    <div class="metric"><strong>Fix mode</strong><span><code>XADD</code> stores messages so a consumer can reconnect and catch up.</span></div>
+    <div class="metric"><strong>Invariant</strong><span>If every message matters, offline consumers must not lose messages.</span></div>
+  </div>
+
+  <div class="diagram-shell">
+    <div class="flow-diagram" data-lab-diagram data-detail-target="pubsub-detail">
+      <div class="flow-row">
+        <button class="flow-node" type="button" data-kind="Publisher" data-title="PUBLISH sends now" data-body="PUBLISH sends a payload to currently subscribed clients on the channel events. Redis does not store it for later replay."><strong>publisher</strong><span>PUBLISH events</span></button>
+        <div class="flow-arrow">fan out</div>
+        <button class="flow-node redis bad" type="button" data-kind="Channel" data-title="Channel has no backlog" data-body="A Pub/Sub channel is not a queue. It has no Pending Entries List and no stored offset."><strong>events</strong><span>no replay</span></button>
+        <div class="flow-arrow">offline</div>
+        <button class="flow-node bad" type="button" data-kind="Subscriber B" data-title="Offline subscriber misses messages" data-body="Subscriber B disconnects during the middle third of the run. Those messages are permanently lost for B."><strong>SUB-B</strong><span>missed forever</span></button>
+      </div>
+      <div class="flow-row">
+        <button class="flow-node" type="button" data-kind="Producer" data-title="XADD stores messages" data-body="Streams store messages in events-stream even while a consumer is offline."><strong>producer</strong><span>XADD stream</span></button>
+        <div class="flow-arrow">stored</div>
+        <button class="flow-node redis good" type="button" data-kind="Stream" data-title="Stream keeps history" data-body="The consumer group can read entries that were added while the consumer was offline."><strong>events-stream</strong><span>durable backlog</span></button>
+        <div class="flow-arrow">catch up</div>
+        <button class="flow-node good" type="button" data-kind="Consumer" data-title="Consumer reconnects" data-body="The stream consumer reads and acknowledges messages after reconnecting, so the same offline period is recoverable."><strong>consumer-A</strong><span>XREADGROUP</span></button>
+      </div>
+    </div>
+    <div class="detail-panel" id="pubsub-detail">
+      <div class="eyebrow" data-detail-kind></div>
+      <h3 data-detail-title></h3>
+      <p data-detail-body></p>
+    </div>
+  </div>
+
+  <h2>Redis Commands</h2>
+  <div class="command-grid">
+    <div class="command-card"><h3><code>SUBSCRIBE channel</code></h3><p>Opens a live subscription. The client receives future messages while connected.</p></div>
+    <div class="command-card"><h3><code>PUBLISH channel payload</code></h3><p>Sends a payload to currently connected subscribers. Return value is subscriber count, not durable delivery proof.</p></div>
+    <div class="command-card"><h3><code>XGROUP CREATE ... MKSTREAM</code></h3><p>Creates a stream consumer group for the durable comparison path.</p></div>
+    <div class="command-card"><h3><code>XADD stream * field value</code></h3><p>Stores a message in a stream so it can be read later.</p></div>
+    <div class="command-card"><h3><code>XREADGROUP</code></h3><p>Reads stored stream messages for a consumer group.</p></div>
+    <div class="command-card"><h3><code>XACK</code></h3><p>Acknowledges that a stream message has been processed.</p></div>
+  </div>
+
+  <h2>When To Use Each</h2>
+  <table>
+    <thead><tr><th>Pattern</th><th>Use when</th><th>Avoid when</th></tr></thead>
+    <tbody>
+      <tr><td>Pub/Sub</td><td>Live fan-out where missed messages are acceptable, such as local invalidation signals or ephemeral notifications.</td><td>Jobs, payments, orders, audit events, or anything that must be replayed.</td></tr>
+      <tr><td>Streams</td><td>Consumers need backlog, ack, retry, or crash recovery.</td><td>You only need a transient signal and do not want to manage retention.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Run Targets</h2>
+  <div class="run-grid">
+    <div class="run-card"><h3><code>make break</code></h3><p>Pub/Sub mode. Look for SUB-B going offline and missing messages permanently.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>Streams mode. Look for the consumer catching up after reconnect.</p></div>
+    <div class="run-card"><h3><code>make load</code></h3><p>Runs the streams comparison with more messages.</p></div>
+  </div>
+
+  <h2>Production Notes</h2>
+  <ul>
+    <li>Pub/Sub is fire-and-forget. It does not keep messages for disconnected clients.</li>
+    <li>A successful <code>PUBLISH</code> does not mean every logical consumer processed the message.</li>
+    <li>Streams are stronger, but they require trimming, consumer-group monitoring, and idempotent handlers.</li>
+  </ul>
+
+  <div class="lab-nav">
+    <a href="cache.html">Cache</a>
+    <a href="ratelimit.html">Rate limit</a>
+    <a href="locks.html">Locks</a>
+    <a href="streams.html">Streams</a>
+  </div>
+</main>
+
+<script src="lab.js"></script>
+</body>
+</html>
