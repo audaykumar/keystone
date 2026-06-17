@@ -1,0 +1,1671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Redis Overview | keystone</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface-2: #1c222b;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --purple: #bc8cff;
+      --orange: #ffa657;
+      --cyan: #56d4dd;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 15px;
+      line-height: 1.68;
+    }
+
+    .site-nav {
+      align-items: center;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 12px;
+      padding: 16px 40px;
+    }
+    .nav-logo { color: var(--accent); font-size: 15px; font-weight: 700; text-decoration: none; }
+    .nav-sep { color: var(--border); }
+    .nav-desc { color: var(--muted); flex: 1; font-size: 13px; }
+    .nav-home { color: var(--muted); font-size: 13px; text-decoration: none; }
+    .nav-home:hover { color: var(--accent); }
+
+    main {
+      margin: 0 auto;
+      max-width: 1120px;
+      padding: 48px 40px 80px;
+    }
+
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+    h2 {
+      border-bottom: 1px solid var(--border);
+      font-size: 1.3rem;
+      margin: 52px 0 18px;
+      padding-bottom: 8px;
+    }
+    h3 { color: var(--accent); font-size: 1rem; margin: 26px 0 8px; }
+    p { margin-bottom: 14px; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    ul { margin: 10px 0 18px 22px; }
+    li { margin-bottom: 7px; }
+
+    code {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--orange);
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 13px;
+      padding: 2px 6px;
+    }
+
+    pre {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 16px 0;
+      overflow-x: auto;
+      padding: 18px;
+    }
+    pre code {
+      background: none;
+      border: 0;
+      color: var(--text);
+      display: block;
+      padding: 0;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin: 18px 0;
+      width: 100%;
+    }
+    th,
+    td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      margin-bottom: 32px;
+      max-width: 780px;
+    }
+
+    .callout {
+      background: #1c2a3a;
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      margin: 20px 0;
+      padding: 16px 20px;
+    }
+    .callout strong {
+      color: var(--accent);
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin: 20px 0;
+    }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .panel h3 { margin-top: 0; }
+    .panel p { color: var(--muted); font-size: 14px; margin-bottom: 0; }
+
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 10px;
+    }
+    .tag {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 3px 8px;
+    }
+
+    .flow {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 20px 0;
+      padding: 18px;
+    }
+    .flow-row {
+      align-items: stretch;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+    .flow-step {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      min-height: 92px;
+      padding: 12px;
+    }
+    .flow-step span {
+      color: var(--muted);
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+    }
+    .flow-step strong {
+      display: block;
+      font-size: 14px;
+      line-height: 1.35;
+      margin-bottom: 4px;
+    }
+    .flow-step p {
+      color: var(--muted);
+      font-size: 13px;
+      margin: 0;
+    }
+
+    .usecase-picker {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 20px 0;
+      padding: 18px;
+    }
+    .usecase-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .usecase-tab {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+      padding: 8px 10px;
+    }
+    .usecase-tab:hover,
+    .usecase-tab.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .usecase-detail {
+      border-left: 3px solid var(--accent);
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 1fr 1fr;
+      min-height: 360px;
+      min-width: 0;
+      padding-left: 16px;
+    }
+    .usecase-detail > * { min-width: 0; }
+    .usecase-detail h3 { margin-top: 0; }
+    .usecase-detail p { color: var(--muted); }
+    .usecase-detail pre { margin: 0; }
+    .usecase-diagram {
+      background:
+        radial-gradient(circle at 18% 15%, rgba(88, 166, 255, 0.12), transparent 28%),
+        radial-gradient(circle at 88% 22%, rgba(63, 185, 80, 0.10), transparent 30%),
+        #111821;
+      border: 1px solid #3d4654;
+      border-radius: 8px;
+      color: var(--accent);
+      margin-top: 14px;
+      max-width: 100%;
+      overflow-x: auto;
+      padding: 10px;
+    }
+    .usecase-diagram svg {
+      display: block;
+      min-width: 440px;
+      width: 100%;
+    }
+    .usecase-diagram text {
+      fill: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      text-anchor: middle;
+    }
+    .usecase-diagram .diagram-small {
+      fill: #b9c4d0;
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .usecase-diagram .diagram-note {
+      text-anchor: start;
+    }
+    .usecase-diagram .diagram-stroke {
+      fill: none;
+      stroke: #d7dee8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 2.2;
+    }
+    .usecase-diagram .diagram-box {
+      fill: #101822;
+      stroke: #44505e;
+      stroke-width: 2;
+    }
+    .usecase-diagram .diagram-box.redis {
+      fill: #251923;
+      stroke: #ff7b72;
+    }
+    .usecase-diagram .diagram-box.db {
+      fill: #142845;
+      stroke: #79c0ff;
+    }
+    .usecase-diagram .diagram-box.good {
+      fill: #14351f;
+      stroke: #56d364;
+    }
+    .usecase-diagram .diagram-box.warn {
+      fill: #352a12;
+      stroke: #e3b341;
+    }
+    .usecase-diagram .diagram-box.muted {
+      fill: #17202b;
+      stroke: #5b6675;
+    }
+    .usecase-diagram .diagram-fill { fill: #162236; }
+    .usecase-diagram .diagram-redis { fill: #351b24; stroke: #ff7b72; }
+    .usecase-diagram .diagram-db { fill: #142845; stroke: #79c0ff; }
+    .usecase-diagram .diagram-good { fill: #14351f; stroke: #56d364; }
+    .usecase-diagram .diagram-warn { fill: #352a12; stroke: #e3b341; }
+    .usecase-diagram .diagram-red { stroke: #ff7b72; }
+    .usecase-diagram .diagram-blue { stroke: #79c0ff; }
+    .usecase-diagram .diagram-green { stroke: #56d364; }
+
+    .redis-system {
+      background:
+        radial-gradient(circle at 24% 16%, rgba(88, 166, 255, 0.10), transparent 26%),
+        radial-gradient(circle at 80% 20%, rgba(188, 140, 255, 0.09), transparent 24%),
+        var(--surface);
+      border: 1px solid #3d4654;
+      border-radius: 10px;
+      margin: 22px 0;
+      padding: 14px;
+    }
+    .redis-system svg {
+      display: block;
+      height: auto;
+      width: 100%;
+    }
+    .redis-zone {
+      fill: rgba(13, 17, 23, 0.34);
+      stroke: #46515f;
+      stroke-dasharray: 5 5;
+    }
+    .redis-zone-label {
+      fill: var(--muted);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .redis-node,
+    .redis-connection {
+      cursor: pointer;
+      outline: none;
+    }
+    .redis-node rect {
+      fill: #101822;
+      stroke: #44505e;
+      stroke-width: 2;
+      transition: fill 160ms ease, opacity 160ms ease, stroke 160ms ease;
+    }
+    .redis-node text {
+      fill: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      font-weight: 650;
+      pointer-events: none;
+      text-anchor: middle;
+    }
+    .redis-node .node-kind {
+      fill: var(--muted);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .redis-zone-label {
+      text-anchor: start;
+    }
+    .redis-node:hover rect,
+    .redis-node:focus rect {
+      fill: #162236;
+      stroke: #79c0ff;
+    }
+    .redis-node.is-active rect {
+      fill: #1c3148;
+      stroke: #79c0ff;
+      stroke-width: 3;
+    }
+    .redis-node.is-muted rect,
+    .redis-node.is-muted text {
+      opacity: 0.22;
+    }
+    .redis-edge {
+      --flow-color: var(--muted);
+      fill: none;
+      opacity: 0.64;
+      stroke: var(--flow-color);
+      stroke-width: 2.4;
+      transition: opacity 160ms ease, stroke 160ms ease, stroke-width 160ms ease;
+    }
+    .redis-edge[data-flow-type="network"] { --flow-color: #79c0ff; }
+    .redis-edge[data-flow-type="memory"] { --flow-color: #56d364; }
+    .redis-edge[data-flow-type="disk"] {
+      --flow-color: #f2cc60;
+      stroke-dasharray: 7 5;
+    }
+    .redis-edge[data-flow-type="replication"] {
+      --flow-color: #d2a8ff;
+      stroke-dasharray: 8 5;
+    }
+    .redis-edge[data-flow-type="decision"] { --flow-color: #f2cc60; }
+    .redis-edge[data-flow-type="deny"] { --flow-color: #ff7b72; }
+    .redis-edge.is-active {
+      opacity: 1;
+      stroke-width: 3;
+    }
+    .redis-edge.is-muted {
+      opacity: 0.08;
+    }
+    .redis-edge-hit {
+      fill: none;
+      stroke: transparent;
+      stroke-width: 14;
+    }
+    .redis-edge-label {
+      fill: #d7dee8;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 9px;
+      pointer-events: none;
+      text-anchor: middle;
+    }
+    .redis-edge-label-bg {
+      fill: #101822;
+      opacity: 0.94;
+      stroke: #44505e;
+    }
+    .redis-connection.is-muted .redis-edge-label,
+    .redis-connection.is-muted .redis-edge-label-bg {
+      opacity: 0.12;
+    }
+    .redis-detail {
+      background: #101822;
+      border: 1px solid #3d4654;
+      border-radius: 10px;
+      margin-top: 14px;
+      padding: 18px;
+    }
+    .redis-detail .panel-eyebrow {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+    .redis-detail h3 {
+      font-size: 1.1rem;
+      margin: 0 0 10px;
+    }
+    .redis-detail p {
+      color: var(--muted);
+      margin-bottom: 0;
+    }
+    .lua-system {
+      background:
+        radial-gradient(circle at 22% 18%, rgba(88, 166, 255, 0.16), transparent 28%),
+        radial-gradient(circle at 78% 18%, rgba(63, 185, 80, 0.14), transparent 26%),
+        #111821;
+    }
+    .lua-system .redis-node[data-lua-node="script"] rect {
+      fill: #18243a;
+      stroke: #79c0ff;
+    }
+    .lua-system .redis-node[data-lua-node="redis"] rect {
+      fill: #291923;
+      stroke: #ff7b72;
+    }
+    .lua-system .redis-node[data-lua-node="delete"] rect {
+      fill: #14351f;
+      stroke: #56d364;
+    }
+    .lua-system .redis-node[data-lua-node="keep"] rect {
+      fill: #352a12;
+      stroke: #f2cc60;
+    }
+
+    .source-list {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 18px;
+    }
+
+    .decision-table td:first-child {
+      color: var(--accent);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 860px) {
+      main { padding: 36px 20px 64px; }
+      .grid { grid-template-columns: 1fr; }
+      .flow-row { grid-template-columns: 1fr; }
+      .usecase-detail { grid-template-columns: 1fr; }
+      .usecase-diagram svg { min-width: 430px; }
+      table {
+        display: block;
+        font-size: 14px;
+        max-width: 100%;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div id="site-nav"></div>
+<script src="../components/nav.js"></script>
+
+<main>
+  <h1>Redis Overview</h1>
+  <p class="subtitle">Redis is an in-memory data structure server. The important design move is not "put data in Redis", it is choosing the data structure and command shape that matches the production job.</p>
+
+  <div class="callout">
+    <strong>Mental model</strong>
+    Redis is a fast command processor over named in-memory data structures. A client sends small commands over TCP. Redis runs the command against a key, returns a reply, optionally expires or evicts data later, and can persist snapshots or append-only command history for restart recovery.
+  </div>
+
+  <h2>Where Redis Fits</h2>
+  <p>Redis usually sits beside the source-of-truth database, not instead of it. PostgreSQL owns relational truth and durable invariants. Redis owns fast access paths, shared counters, temporary coordination, fanout, and lightweight event buffers.</p>
+
+  <div class="grid">
+    <div class="panel">
+      <h3>Latency tool</h3>
+      <p>Use Redis when repeated reads, counters, or coordination checks must avoid a slower database round trip.</p>
+      <div class="tag-row"><span class="tag">cache</span><span class="tag">session</span><span class="tag">rate limit</span></div>
+    </div>
+    <div class="panel">
+      <h3>Data structure tool</h3>
+      <p>Use Redis when the primitive itself is the feature: set membership, sorted ranking, list pop, stream append, or atomic increment.</p>
+      <div class="tag-row"><span class="tag">sets</span><span class="tag">sorted sets</span><span class="tag">streams</span></div>
+    </div>
+    <div class="panel">
+      <h3>Failure tradeoff</h3>
+      <p>Redis buys speed by making memory, expiry, eviction, persistence, and replica lag part of the application design.</p>
+      <div class="tag-row"><span class="tag">TTL</span><span class="tag">eviction</span><span class="tag">AOF/RDB</span></div>
+    </div>
+  </div>
+
+  <h2>How A Command Works</h2>
+  <p>Clients talk to Redis with RESP, the Redis Serialization Protocol. RESP is a request-response wire format where clients send commands as arrays of bulk strings, and Redis returns command-specific replies. Pipelining lets clients send multiple commands before waiting for each response, reducing round trips.</p>
+
+  <div class="redis-system" aria-label="Interactive Redis command path">
+    <svg viewBox="0 0 980 520" role="img" aria-labelledby="redis-system-title redis-system-desc">
+      <title id="redis-system-title">Redis command path</title>
+      <desc id="redis-system-desc">Interactive diagram showing clients, sockets, the event loop, command execution, in-memory data, persistence, and replicas.</desc>
+      <defs>
+        <marker id="redis-arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+          <path d="M1,1 L9,5 L1,9" fill="none" stroke="currentColor" stroke-width="2"></path>
+        </marker>
+      </defs>
+
+      <rect class="redis-zone" x="24" y="42" width="200" height="420" rx="12"></rect>
+      <text class="redis-zone-label" x="44" y="68">clients</text>
+      <rect class="redis-zone" x="260" y="42" width="250" height="420" rx="12"></rect>
+      <text class="redis-zone-label" x="280" y="68">network and event loop</text>
+      <rect class="redis-zone" x="548" y="42" width="210" height="420" rx="12"></rect>
+      <text class="redis-zone-label" x="568" y="68">single command path</text>
+      <rect class="redis-zone" x="790" y="42" width="166" height="420" rx="12"></rect>
+      <text class="redis-zone-label" x="810" y="68">durability</text>
+
+      <g class="redis-connection" data-redis-connection="request" role="button" tabindex="0" aria-label="Client request to socket">
+        <path class="redis-edge" data-flow-type="network" data-edge="clients sockets" d="M184 152 H282" marker-end="url(#redis-arrow)"></path>
+        <path class="redis-edge-hit" d="M184 152 H282"></path>
+        <rect class="redis-edge-label-bg" x="203" y="134" width="60" height="18" rx="5"></rect>
+        <text class="redis-edge-label" x="233" y="147">RESP</text>
+      </g>
+      <g class="redis-connection" data-redis-connection="ready" role="button" tabindex="0" aria-label="Socket readiness to event loop">
+        <path class="redis-edge" data-flow-type="network" data-edge="sockets event-loop" d="M392 172 C420 190 420 226 392 244" marker-end="url(#redis-arrow)"></path>
+        <path class="redis-edge-hit" d="M392 172 C420 190 420 226 392 244"></path>
+        <rect class="redis-edge-label-bg" x="394" y="198" width="70" height="18" rx="5"></rect>
+        <text class="redis-edge-label" x="429" y="211">ready fd</text>
+      </g>
+      <g class="redis-connection" data-redis-connection="dispatch" role="button" tabindex="0" aria-label="Event loop dispatches command">
+        <path class="redis-edge" data-flow-type="network" data-edge="event-loop parser" d="M474 282 H570" marker-end="url(#redis-arrow)"></path>
+        <path class="redis-edge-hit" d="M474 282 H570"></path>
+        <rect class="redis-edge-label-bg" x="494" y="264" width="54" height="18" rx="5"></rect>
+        <text class="redis-edge-label" x="521" y="277">fetch</text>
+      </g>
+      <g class="redis-connection" data-redis-connection="execute" role="button" tabindex="0" aria-label="Command execution reads and writes memory">
+        <path class="redis-edge" data-flow-type="memory" data-edge="executor memory" d="M654 282 C680 230 711 190 810 164" marker-end="url(#redis-arrow)"></path>
+        <path class="redis-edge-hit" d="M654 282 C680 230 711 190 810 164"></path>
+        <rect class="redis-edge-label-bg" x="690" y="206" width="78" height="18" rx="5"></rect>
+        <text class="redis-edge-label" x="729" y="219">key lookup</text>
+      </g>
+      <g class="redis-connection" data-redis-connection="aof-write" role="button" tabindex="0" aria-label="Write command appended to AOF">
+        <path class="redis-edge" data-flow-type="disk" data-edge="executor aof" d="M674 320 C735 350 782 354 824 344" marker-end="url(#redis-arrow)"></path>
+        <path class="redis-edge-hit" d="M674 320 C735 350 782 354 824 344"></path>
+        <rect class="redis-edge-label-bg" x="722" y="336" width="52" height="18" rx="5"></rect>
+        <text class="redis-edge-label" x="748" y="349">AOF</text>
+      </g>
+      <g class="redis-connection" data-redis-connection="replicate" role="button" tabindex="0" aria-label="Primary sends write to replica">
+        <path class="redis-edge" data-flow-type="replication" data-edge="executor replica" d="M674 300 C748 294 812 238 842 224" marker-end="url(#redis-arrow)"></path>
+        <path class="redis-edge-hit" d="M674 300 C748 294 812 238 842 224"></path>
+        <rect class="redis-edge-label-bg" x="748" y="257" width="70" height="18" rx="5"></rect>
+        <text class="redis-edge-label" x="783" y="270">replica</text>
+      </g>
+      <g class="redis-connection" data-redis-connection="reply" role="button" tabindex="0" aria-label="Serialized reply returns to client">
+        <path class="redis-edge" data-flow-type="network" data-edge="serializer clients" d="M572 374 C420 468 225 430 154 210" marker-end="url(#redis-arrow)"></path>
+        <path class="redis-edge-hit" d="M572 374 C420 468 225 430 154 210"></path>
+        <rect class="redis-edge-label-bg" x="323" y="430" width="54" height="18" rx="5"></rect>
+        <text class="redis-edge-label" x="350" y="443">reply</text>
+      </g>
+
+      <g class="redis-node" data-redis-node="clients" role="button" tabindex="0" aria-label="Clients">
+        <rect x="62" y="105" width="122" height="58" rx="9"></rect>
+        <text class="node-kind" x="123" y="126">many</text>
+        <text x="123" y="148">clients</text>
+      </g>
+      <g class="redis-node" data-redis-node="sockets" role="button" tabindex="0" aria-label="Client sockets">
+        <rect x="282" y="110" width="110" height="86" rx="9"></rect>
+        <text class="node-kind" x="337" y="132">fds</text>
+        <text x="337" y="154">sockets</text>
+        <text class="node-kind" x="337" y="176">read/write</text>
+      </g>
+      <g class="redis-node" data-redis-node="event-loop" role="button" tabindex="0" aria-label="I/O multiplexing event loop">
+        <rect x="316" y="244" width="158" height="82" rx="9"></rect>
+        <text class="node-kind" x="395" y="266">selects ready</text>
+        <text x="395" y="288">event loop</text>
+        <text class="node-kind" x="395" y="310">epoll/kqueue</text>
+      </g>
+      <g class="redis-node" data-redis-node="parser" role="button" tabindex="0" aria-label="Parser">
+        <rect x="570" y="98" width="130" height="62" rx="9"></rect>
+        <text class="node-kind" x="635" y="120">RESP</text>
+        <text x="635" y="143">parse</text>
+      </g>
+      <g class="redis-node" data-redis-node="executor" role="button" tabindex="0" aria-label="Command executor">
+        <rect x="570" y="250" width="104" height="82" rx="9"></rect>
+        <text class="node-kind" x="622" y="272">single op</text>
+        <text x="622" y="294">execute</text>
+        <text class="node-kind" x="622" y="316">atomic cmd</text>
+      </g>
+      <g class="redis-node" data-redis-node="serializer" role="button" tabindex="0" aria-label="Reply serializer">
+        <rect x="570" y="360" width="130" height="62" rx="9"></rect>
+        <text class="node-kind" x="635" y="382">RESP</text>
+        <text x="635" y="405">serialize</text>
+      </g>
+      <g class="redis-node" data-redis-node="memory" role="button" tabindex="0" aria-label="In-memory keyspace">
+        <rect x="810" y="112" width="112" height="76" rx="9"></rect>
+        <text class="node-kind" x="866" y="134">dict</text>
+        <text x="866" y="156">keyspace</text>
+        <text class="node-kind" x="866" y="178">typed values</text>
+      </g>
+      <g class="redis-node" data-redis-node="replica" role="button" tabindex="0" aria-label="Replica">
+        <rect x="842" y="214" width="90" height="54" rx="9"></rect>
+        <text class="node-kind" x="887" y="236">async</text>
+        <text x="887" y="256">replica</text>
+      </g>
+      <g class="redis-node" data-redis-node="aof" role="button" tabindex="0" aria-label="AOF and RDB persistence">
+        <rect x="824" y="322" width="96" height="72" rx="9"></rect>
+        <text class="node-kind" x="872" y="344">disk</text>
+        <text x="872" y="365">AOF/RDB</text>
+      </g>
+    </svg>
+
+    <div class="redis-detail" id="redis-system-detail">
+      <div class="panel-eyebrow" id="redis-system-kind">How to read this diagram</div>
+      <h3 id="redis-system-title-panel">Select a component or arrow</h3>
+      <p id="redis-system-summary">Boxes are Redis runtime parts. Arrows are movement of requests, key lookups, replies, persistence, or replication. Select any part to focus the related path.</p>
+    </div>
+  </div>
+
+  <div class="flow">
+    <div class="flow-row">
+      <div class="flow-step">
+        <span>1</span>
+        <strong>Client command</strong>
+        <p><code>INCR rl:user:42</code> travels over TCP as RESP.</p>
+      </div>
+      <div class="flow-step">
+        <span>2</span>
+        <strong>Parse</strong>
+        <p>Redis parses command name and arguments.</p>
+      </div>
+      <div class="flow-step">
+        <span>3</span>
+        <strong>Execute</strong>
+        <p>The command mutates or reads an in-memory key.</p>
+      </div>
+      <div class="flow-step">
+        <span>4</span>
+        <strong>Bookkeeping</strong>
+        <p>TTL, AOF, replication, and memory policy may be touched.</p>
+      </div>
+      <div class="flow-step">
+        <span>5</span>
+        <strong>Reply</strong>
+        <p>Common RESP replies include integers, strings, arrays, nulls, and errors. RESP3 adds more reply types.</p>
+      </div>
+    </div>
+  </div>
+
+  <h3>RESP Command Anatomy</h3>
+  <p>The command <code>SET name aniket</code> is sent as an array of three bulk strings: command name, key, and value.</p>
+
+  <pre><code>*3\r\n
+$3\r\n
+SET\r\n
+$4\r\n
+name\r\n
+$6\r\n
+aniket\r\n</code></pre>
+
+  <p><code>*3</code> means the outer object is an array of three items. Each <code>$N</code> line says the next bulk string has <code>N</code> bytes. The text form is enough here: RESP is intentionally simple.</p>
+
+  <h2>Core Internals</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Part</th>
+        <th>What it does</th>
+        <th>Why it matters</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Keyspace</td>
+        <td>Top-level namespace mapping string keys to typed values.</td>
+        <td>The key name is the routing and lifecycle unit. TTL, deletion, and cluster placement all hang off keys.</td>
+      </tr>
+      <tr>
+        <td>Native data structures</td>
+        <td>Strings, hashes, lists, sets, sorted sets, streams, and other types.</td>
+        <td>Redis commands operate directly on structures, so the modeling choice decides both correctness and performance.</td>
+      </tr>
+      <tr>
+        <td>Atomic commands</td>
+        <td>Single commands run as indivisible operations from the perspective of other clients.</td>
+        <td><code>INCR</code>, <code>SET NX PX</code>, <code>HINCRBY</code>, and <code>XADD</code> avoid client-side read-modify-write races.</td>
+      </tr>
+      <tr>
+        <td>Transactions</td>
+        <td><code>MULTI</code> queues commands and <code>EXEC</code> runs them as one isolated batch. <code>WATCH</code> adds optimistic check-and-set.</td>
+        <td>Useful when commands must be grouped. Redis transactions are not SQL transactions: executed command errors do not roll the batch back.</td>
+      </tr>
+      <tr>
+        <td>Expiry</td>
+        <td>Keys can have TTLs through commands such as <code>EXPIRE</code>, <code>SET EX</code>, and <code>SET PX</code>.</td>
+        <td>Expiry turns Redis into a temporary truth layer: cache entries, rate windows, sessions, and leases can disappear by design.</td>
+      </tr>
+      <tr>
+        <td>Persistence</td>
+        <td>RDB snapshots capture point-in-time state. AOF logs write operations with configurable fsync policy.</td>
+        <td>Persistence reduces restart loss, but Redis is still usually designed as memory-first infrastructure.</td>
+      </tr>
+      <tr>
+        <td>Eviction</td>
+        <td><code>maxmemory</code> and <code>maxmemory-policy</code> decide what happens when Redis exceeds memory budget.</td>
+        <td>A cache may safely evict. A lock, session, or queue may not be safe to evict without application consequences.</td>
+      </tr>
+      <tr>
+        <td>Replication and failover</td>
+        <td>Redis can replicate writes to replicas and use Sentinel or Cluster patterns for availability and scaling.</td>
+        <td>Replicas help reads and recovery, but asynchronous replication means recent writes can be lost during failover.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>What Data Can Be Stored</h2>
+  <p>Redis keys are strings. Values are typed data structures. A key cannot be both a string and a hash at the same time. A wrong command against the wrong type returns a type error.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Shape</th>
+        <th>Good for</th>
+        <th>Example commands</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>String</td>
+        <td>Binary-safe bytes, integers as strings, JSON blobs, tokens.</td>
+        <td>Cache values, counters, feature flags, idempotency markers, locks.</td>
+        <td><code>GET</code>, <code>SET</code>, <code>INCR</code>, <code>MGET</code></td>
+      </tr>
+      <tr>
+        <td>Hash</td>
+        <td>Field-value map under one key.</td>
+        <td>Small objects such as session fields, user profile fragments, payment status fields.</td>
+        <td><code>HSET</code>, <code>HGET</code>, <code>HINCRBY</code></td>
+      </tr>
+      <tr>
+        <td>List</td>
+        <td>Insertion-ordered sequence.</td>
+        <td>Simple queues, recent activity, bounded history.</td>
+        <td><code>LPUSH</code>, <code>RPOP</code>, <code>BLPOP</code></td>
+      </tr>
+      <tr>
+        <td>Set</td>
+        <td>Unordered unique members.</td>
+        <td>Membership, deduplication, online users, permissions, tags.</td>
+        <td><code>SADD</code>, <code>SISMEMBER</code>, <code>SINTER</code></td>
+      </tr>
+      <tr>
+        <td>Sorted set</td>
+        <td>Unique members ordered by score.</td>
+        <td>Leaderboards, delayed jobs, priority queues, time-window indexes.</td>
+        <td><code>ZADD</code>, <code>ZRANGE</code>, <code>ZPOPMIN</code></td>
+      </tr>
+      <tr>
+        <td>Stream</td>
+        <td>Append-only log with IDs and fields.</td>
+        <td>Event buffers, consumer groups, persisted work delivery when Redis persistence, trimming, and failover settings match the requirement.</td>
+        <td><code>XADD</code>, <code>XREAD</code>, <code>XGROUP</code>, <code>XACK</code></td>
+      </tr>
+      <tr>
+        <td>Bitmap</td>
+        <td>Bit-level operations over a string.</td>
+        <td>Daily active users, feature bitsets, compact boolean flags.</td>
+        <td><code>SETBIT</code>, <code>GETBIT</code>, <code>BITCOUNT</code></td>
+      </tr>
+      <tr>
+        <td>HyperLogLog</td>
+        <td>Probabilistic cardinality estimate.</td>
+        <td>Approximate unique visitors or unique devices with tiny memory.</td>
+        <td><code>PFADD</code>, <code>PFCOUNT</code></td>
+      </tr>
+      <tr>
+        <td>Geospatial</td>
+        <td>Longitude and latitude indexed through sorted-set mechanics.</td>
+        <td>Nearby stores, drivers, ATMs, or delivery zones.</td>
+        <td><code>GEOADD</code>, <code>GEOSEARCH</code></td>
+      </tr>
+      <tr>
+        <td>JSON, time series, vector sets, search</td>
+        <td>Structured document, metric, vector, and query features in current Redis distributions.</td>
+        <td>Document caching, search indexes, metrics, vector similarity, AI retrieval paths.</td>
+        <td><code>JSON.SET</code>, <code>FT.SEARCH</code>, <code>TS.ADD</code>, <code>VADD</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Use Cases</h2>
+  <p>The same Redis server can power many patterns, but each pattern has a different correctness story. Choose by asking: what is the source of truth, what can expire, what can be lost, and what must be atomic?</p>
+
+  <div class="usecase-picker">
+    <div class="usecase-tabs" role="tablist" aria-label="Redis use cases">
+      <button class="usecase-tab active" type="button" data-usecase="cache">Cache</button>
+      <button class="usecase-tab" type="button" data-usecase="rate-limit">Rate limit</button>
+      <button class="usecase-tab" type="button" data-usecase="lock">Lock</button>
+      <button class="usecase-tab" type="button" data-usecase="queue">Queue</button>
+      <button class="usecase-tab" type="button" data-usecase="pubsub">Pub/Sub</button>
+      <button class="usecase-tab" type="button" data-usecase="ranking">Ranking</button>
+      <button class="usecase-tab" type="button" data-usecase="dedup">Dedup</button>
+    </div>
+    <div class="usecase-detail">
+      <div>
+        <h3 id="usecase-title">Cache-aside</h3>
+        <p id="usecase-model">Redis holds a copy of data whose durable home is somewhere else. Misses go to the database, then populate Redis with a TTL.</p>
+        <p id="usecase-risk">Risk: stale data, thundering herd on miss, and unsafe assumptions if Redis becomes the only copy.</p>
+        <div class="usecase-diagram" id="usecase-diagram" aria-label="Cache-aside visual aid"></div>
+      </div>
+      <pre><code id="usecase-code">GET product:42
+SET product:42 "{\"stock\": 99}" EX 60
+TTL product:42</code></pre>
+    </div>
+  </div>
+
+  <h2>Use Case Decision Rules</h2>
+  <table class="decision-table">
+    <thead>
+      <tr>
+        <th>Use Redis for</th>
+        <th>Good design</th>
+        <th>Bad smell</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Cache</td>
+        <td>Database remains source of truth. Cache key has clear invalidation or TTL.</td>
+        <td>Business-critical value exists only in Redis with eviction enabled.</td>
+      </tr>
+      <tr>
+        <td>Rate limiter</td>
+        <td>Use atomic increments plus expiry. Keep window semantics explicit.</td>
+        <td>Separate <code>GET</code>, app math, and <code>SET</code> under concurrency.</td>
+      </tr>
+      <tr>
+        <td>Lock or lease</td>
+        <td>Use unique ownership token, <code>SET NX PX</code>, and token-checked release.</td>
+        <td>Plain <code>DEL lock</code> without checking owner, or lock TTL longer than failure detection.</td>
+      </tr>
+      <tr>
+        <td>Queue</td>
+        <td>Use streams and consumer groups when ack and retry matter.</td>
+        <td>Using Pub/Sub for work that must survive subscriber disconnects.</td>
+      </tr>
+      <tr>
+        <td>Ranking</td>
+        <td>Sorted set score is the ordering rule. Ties and updates are understood.</td>
+        <td>Trying to run relational joins or arbitrary filtering inside Redis.</td>
+      </tr>
+      <tr>
+        <td>Dedup</td>
+        <td>Set or string marker has a TTL aligned with replay window.</td>
+        <td>Marker expires before upstream retries can arrive.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Lua And Lua Scripts</h2>
+  <p>Lua is a small embedded programming language. Redis embeds Lua 5.1 so clients can send scripts with <code>EVAL</code> or load them and call by hash. Scripts run on the Redis server, next to the data.</p>
+
+  <div class="callout">
+    <strong>Why Lua matters</strong>
+    Lua lets you compose several Redis commands into one atomic server-side operation. That avoids client round trips and prevents other clients from observing the middle of a multi-step update.
+  </div>
+
+  <div class="redis-system lua-system" aria-label="Clickable Lua script atomic execution diagram">
+    <svg viewBox="0 0 900 430" role="img" aria-labelledby="lua-system-title lua-system-desc">
+      <title id="lua-system-title">Lua script atomic execution</title>
+      <desc id="lua-system-desc">Click components to see how a Lua script runs inside Redis as one atomic operation.</desc>
+      <defs>
+        <marker id="lua-system-arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+          <path d="M1,1 L9,5 L1,9" fill="none" stroke="currentColor" stroke-width="2"></path>
+        </marker>
+      </defs>
+
+      <rect class="redis-zone" x="268" y="34" width="542" height="326" rx="18"></rect>
+      <text class="redis-zone-label" x="292" y="64">Redis runs the whole script without interleaving another command</text>
+
+      <g class="redis-node" data-lua-node="client" role="button" tabindex="0" aria-pressed="false">
+        <rect x="48" y="166" width="154" height="78" rx="10"></rect>
+        <text class="node-kind" x="125" y="196">client</text>
+        <text x="125" y="220">EVAL</text>
+      </g>
+
+      <g class="redis-node" data-lua-node="script" role="button" tabindex="0" aria-pressed="false">
+        <rect x="298" y="138" width="156" height="110" rx="10"></rect>
+        <text class="node-kind" x="376" y="170">server-side</text>
+        <text x="376" y="194">Lua script</text>
+        <text class="node-kind" x="376" y="222">one operation</text>
+      </g>
+
+      <g class="redis-node" data-lua-node="redis" role="button" tabindex="0" aria-pressed="false">
+        <rect x="532" y="90" width="176" height="82" rx="10"></rect>
+        <text class="node-kind" x="620" y="122">keyspace</text>
+        <text x="620" y="146">lock:payment</text>
+      </g>
+
+      <g class="redis-node" data-lua-node="get" role="button" tabindex="0" aria-pressed="false">
+        <rect x="532" y="214" width="120" height="70" rx="10"></rect>
+        <text class="node-kind" x="592" y="242">read</text>
+        <text x="592" y="264">GET</text>
+      </g>
+
+      <g class="redis-node" data-lua-node="compare" role="button" tabindex="0" aria-pressed="false">
+        <rect x="700" y="214" width="120" height="70" rx="10"></rect>
+        <text class="node-kind" x="760" y="242">check</text>
+        <text x="760" y="264">token</text>
+      </g>
+
+      <g class="redis-node" data-lua-node="delete" role="button" tabindex="0" aria-pressed="false">
+        <rect x="680" y="330" width="116" height="64" rx="10"></rect>
+        <text class="node-kind" x="738" y="356">match</text>
+        <text x="738" y="378">DEL</text>
+      </g>
+
+      <g class="redis-node" data-lua-node="keep" role="button" tabindex="0" aria-pressed="false">
+        <rect x="512" y="330" width="116" height="64" rx="10"></rect>
+        <text class="node-kind" x="570" y="356">mismatch</text>
+        <text x="570" y="378">return 0</text>
+      </g>
+
+      <g class="redis-connection" data-lua-connection="submit" role="button" tabindex="0" aria-pressed="false">
+        <path class="redis-edge-hit" d="M202 205 H298"></path>
+        <path class="redis-edge" data-edge="client submit script" data-flow-type="network" marker-end="url(#lua-system-arrow)" d="M202 205 H298"></path>
+        <rect class="redis-edge-label-bg" x="224" y="178" width="62" height="20" rx="6"></rect>
+        <text class="redis-edge-label" x="255" y="192">EVAL</text>
+      </g>
+
+      <g class="redis-connection" data-lua-connection="read" role="button" tabindex="0" aria-pressed="false">
+        <path class="redis-edge-hit" d="M454 178 C492 168 500 138 532 132"></path>
+        <path class="redis-edge" data-edge="script read redis" data-flow-type="memory" marker-end="url(#lua-system-arrow)" d="M454 178 C492 168 500 138 532 132"></path>
+        <rect class="redis-edge-label-bg" x="462" y="138" width="52" height="20" rx="6"></rect>
+        <text class="redis-edge-label" x="488" y="152">GET</text>
+      </g>
+
+      <g class="redis-connection" data-lua-connection="read-lock" role="button" tabindex="0" aria-pressed="false">
+        <path class="redis-edge-hit" d="M454 216 H532"></path>
+        <path class="redis-edge" data-edge="script read-lock get" data-flow-type="decision" marker-end="url(#lua-system-arrow)" d="M454 216 H532"></path>
+        <rect class="redis-edge-label-bg" x="468" y="226" width="42" height="20" rx="6"></rect>
+        <text class="redis-edge-label" x="489" y="240">read</text>
+      </g>
+
+      <g class="redis-connection" data-lua-connection="decide" role="button" tabindex="0" aria-pressed="false">
+        <path class="redis-edge-hit" d="M652 249 H700"></path>
+        <path class="redis-edge" data-edge="get decide compare" data-flow-type="decision" marker-end="url(#lua-system-arrow)" d="M652 249 H700"></path>
+        <rect class="redis-edge-label-bg" x="660" y="222" width="34" height="20" rx="6"></rect>
+        <text class="redis-edge-label" x="677" y="236">if</text>
+      </g>
+
+      <g class="redis-connection" data-lua-connection="match" role="button" tabindex="0" aria-pressed="false">
+        <path class="redis-edge-hit" d="M760 284 V330"></path>
+        <path class="redis-edge" data-edge="compare match delete" data-flow-type="memory" marker-end="url(#lua-system-arrow)" d="M760 284 V330"></path>
+        <rect class="redis-edge-label-bg" x="772" y="298" width="48" height="20" rx="6"></rect>
+        <text class="redis-edge-label" x="796" y="312">match</text>
+      </g>
+
+      <g class="redis-connection" data-lua-connection="mismatch" role="button" tabindex="0" aria-pressed="false">
+        <path class="redis-edge-hit" d="M700 266 C642 278 586 288 570 330"></path>
+        <path class="redis-edge" data-edge="compare mismatch keep" data-flow-type="deny" marker-end="url(#lua-system-arrow)" d="M700 266 C642 278 586 288 570 330"></path>
+        <rect class="redis-edge-label-bg" x="598" y="282" width="66" height="20" rx="6"></rect>
+        <text class="redis-edge-label" x="631" y="296">mismatch</text>
+      </g>
+
+      <g class="redis-connection" data-lua-connection="reply" role="button" tabindex="0" aria-pressed="false">
+        <path class="redis-edge-hit" d="M298 238 C252 300 158 300 125 244"></path>
+        <path class="redis-edge" data-edge="script reply client" data-flow-type="network" marker-end="url(#lua-system-arrow)" d="M298 238 C252 300 158 300 125 244"></path>
+        <rect class="redis-edge-label-bg" x="182" y="282" width="66" height="20" rx="6"></rect>
+        <text class="redis-edge-label" x="215" y="296">reply</text>
+      </g>
+    </svg>
+    <div class="redis-detail lua-detail" id="lua-system-detail">
+      <div class="panel-eyebrow" id="lua-system-kind">Atomic script</div>
+      <h3 id="lua-system-title-panel">Lua runs beside the data</h3>
+      <p id="lua-system-summary">The client sends one script call. Redis executes the reads, checks, writes, and return value as one uninterrupted operation, so no other client sees the middle state.</p>
+    </div>
+  </div>
+
+  <h3>When Lua is useful</h3>
+  <ul>
+    <li>Conditional update: decrement stock only if enough quota remains.</li>
+    <li>Safe lock release: delete a lock only if its value matches your owner token.</li>
+    <li>Rate limiter: increment a counter and set expiry only when the key is new.</li>
+    <li>Queue bookkeeping: move a job between structures without a visible half-state.</li>
+    <li>Cross-key checks on one Redis node when a single built-in command is not enough.</li>
+  </ul>
+
+  <h3>Safe lock release script</h3>
+  <pre><code>EVAL "
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+else
+  return 0
+end
+" 1 lock:payment:123 worker-a-uuid</code></pre>
+
+  <p>This prevents one worker from deleting another worker's renewed or re-acquired lock. The key name is passed through <code>KEYS</code>. The owner token is passed through <code>ARGV</code>. That matters because Redis Cluster needs scripts to declare their key access clearly.</p>
+
+  <h3>Fixed-window rate limiter script</h3>
+  <pre><code>EVAL "
+local current = redis.call('INCR', KEYS[1])
+if current == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return current
+" 1 rl:user:42 60</code></pre>
+
+  <p>The script makes the first increment and expiry setup one atomic operation. Without the script, a client crash between <code>INCR</code> and <code>EXPIRE</code> can leave a counter that never resets.</p>
+
+  <h3>Lua cautions</h3>
+  <ul>
+    <li>Scripts block Redis while they execute, so keep them short.</li>
+    <li>Pass keys through <code>KEYS</code> and non-key arguments through <code>ARGV</code>.</li>
+    <li>Do not generate a unique script body for every request. Parameterize scripts instead.</li>
+    <li>For long-lived server-side logic in Redis 7+, evaluate Redis Functions as an alternative.</li>
+  </ul>
+
+  <h2>Persistence, Eviction, And Durability</h2>
+  <p>Redis can persist data, but persistence choice changes what failures mean.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Mechanism</th>
+        <th>How it works</th>
+        <th>Tradeoff</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>RDB snapshot</td>
+        <td>Periodically writes a compact point-in-time snapshot.</td>
+        <td>Fast restart file, but recent writes after the last snapshot can be lost.</td>
+      </tr>
+      <tr>
+        <td>AOF</td>
+        <td>Appends write operations to a log and rewrites it in the background when needed.</td>
+        <td>More durable with fsync policy, but larger files and possible write overhead.</td>
+      </tr>
+      <tr>
+        <td>No persistence</td>
+        <td>Data lives only in memory.</td>
+        <td>Fine for disposable cache, dangerous for source-of-truth state.</td>
+      </tr>
+      <tr>
+        <td>Eviction</td>
+        <td>When <code>maxmemory</code> is exceeded, Redis follows the configured eviction policy.</td>
+        <td>Safe for cache copies. Risky for locks, streams, sessions, and idempotency markers.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Redis Versus PostgreSQL</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Question</th>
+        <th>PostgreSQL answer</th>
+        <th>Redis answer</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>What is the source of truth?</td>
+        <td>Usually yes. Relational constraints, transactions, durable commits.</td>
+        <td>Only when explicitly designed that way. Often a derived or temporary view.</td>
+      </tr>
+      <tr>
+        <td>How do I protect invariants?</td>
+        <td>Transactions, row locks, constraints, isolation levels, atomic SQL.</td>
+        <td>Atomic commands, Lua scripts, optimistic <code>WATCH</code>, careful key modeling.</td>
+      </tr>
+      <tr>
+        <td>What happens under memory pressure?</td>
+        <td>Queries slow, disk and buffer behavior matter.</td>
+        <td>Keys may be evicted or writes may fail, depending on policy.</td>
+      </tr>
+      <tr>
+        <td>What is the modeling unit?</td>
+        <td>Tables, rows, indexes, constraints, joins.</td>
+        <td>Keys and command-specific data structures.</td>
+      </tr>
+      <tr>
+        <td>What is the common mistake?</td>
+        <td>Assuming read-modify-write is safe without the right lock or isolation.</td>
+        <td>Assuming speed implies durability, or that TTL/eviction cannot affect correctness.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Practical First CLI Experiments</h2>
+  <p>These are enough to learn the shape before writing application code.</p>
+
+  <pre><code># cache with TTL
+SET product:42 "{\"price\": 1999}" EX 30
+GET product:42
+TTL product:42
+
+# rate counter
+INCR rl:user:42
+EXPIRE rl:user:42 60
+TTL rl:user:42
+
+# lock acquisition
+SET lock:payment:123 worker-a NX PX 5000
+GET lock:payment:123
+
+# stream event
+XADD payments * id p1 amount 100
+XREAD COUNT 1 STREAMS payments 0
+
+# sorted ranking
+ZADD leaderboard 900 user:42 850 user:7
+ZREVRANGE leaderboard 0 9 WITHSCORES</code></pre>
+
+  <h2>Sources</h2>
+  <ul class="source-list">
+    <li><a href="https://redis.io/docs/latest/develop/data-types/">Redis data types</a></li>
+    <li><a href="https://redis.io/docs/latest/develop/reference/protocol-spec/">Redis Serialization Protocol specification</a></li>
+    <li><a href="https://redis.io/docs/latest/develop/using-commands/pipelining/">Redis pipelining</a></li>
+    <li><a href="https://redis.io/docs/latest/develop/using-commands/transactions/">Redis transactions</a></li>
+    <li><a href="https://redis.io/docs/latest/develop/programmability/eval-intro/">Scripting with Lua</a></li>
+    <li><a href="https://redis.io/docs/latest/operate/oss_and_stack/management/persistence/">Redis persistence</a></li>
+    <li><a href="https://redis.io/docs/latest/develop/reference/eviction/">Redis key eviction</a></li>
+    <li><a href="https://redis.io/docs/latest/develop/pubsub/">Redis Pub/Sub</a></li>
+  </ul>
+</main>
+
+<script>
+  const redisSystemItems = {
+    clients: {
+      kind: 'Caller',
+      title: 'Many clients',
+      summary: 'Applications keep TCP connections open and send small RESP commands. Redis can track many sockets without one thread per client.'
+    },
+    sockets: {
+      kind: 'Network boundary',
+      title: 'Client sockets',
+      summary: 'Each client connection is a file descriptor with input and output buffers. Ready sockets are picked by the event loop.'
+    },
+    'event-loop': {
+      kind: 'I/O multiplexing',
+      title: 'Event loop',
+      summary: 'Redis waits for ready sockets using OS multiplexing such as epoll or kqueue, then processes ready work without blocking on idle clients.'
+    },
+    parser: {
+      kind: 'Protocol step',
+      title: 'RESP parser',
+      summary: 'Redis parses command frames into command name and arguments. SET name aniket becomes an array of three bulk strings.'
+    },
+    executor: {
+      kind: 'Command execution',
+      title: 'Executor',
+      summary: 'The selected command runs against in-memory structures. A single command is atomic from the point of view of other clients.'
+    },
+    serializer: {
+      kind: 'Protocol step',
+      title: 'Reply serializer',
+      summary: 'The result is encoded back into RESP and placed on the client output buffer.'
+    },
+    memory: {
+      kind: 'Primary data',
+      title: 'In-memory keyspace',
+      summary: 'The keyspace is a dictionary from string keys to typed values: strings, hashes, lists, sets, sorted sets, streams, and more.'
+    },
+    replica: {
+      kind: 'Replication',
+      title: 'Replica',
+      summary: 'Writes can be sent to replicas asynchronously. This helps availability and reads, but recent writes can be lost on failover.'
+    },
+    aof: {
+      kind: 'Persistence',
+      title: 'AOF and RDB',
+      summary: 'Redis can persist commands through AOF and snapshots through RDB. The fsync and snapshot policy defines the crash loss window.'
+    },
+    request: {
+      kind: 'Data movement',
+      title: 'Client request',
+      summary: 'A command enters Redis as RESP bytes over a socket. Pipelining sends multiple commands before waiting for replies.'
+    },
+    ready: {
+      kind: 'Data movement',
+      title: 'Ready file descriptor',
+      summary: 'The OS tells Redis which sockets can be read or written. Idle sockets do not consume a worker thread.'
+    },
+    dispatch: {
+      kind: 'Data movement',
+      title: 'Fetch next command',
+      summary: 'The event loop takes ready input, parses a full command, and dispatches it to the command implementation.'
+    },
+    execute: {
+      kind: 'Data movement',
+      title: 'Key lookup and mutation',
+      summary: 'Commands read or mutate objects in memory. Atomic command shapes avoid app-side read-modify-write races.'
+    },
+    'aof-write': {
+      kind: 'Data movement',
+      title: 'Append-only persistence',
+      summary: 'A write command may be appended to AOF. Depending on fsync policy, durability may lag the command reply.'
+    },
+    replicate: {
+      kind: 'Data movement',
+      title: 'Async replication',
+      summary: 'The primary streams writes to replicas. Replication is useful, but it is not the same as a synchronous quorum commit.'
+    },
+    reply: {
+      kind: 'Data movement',
+      title: 'Serialized reply',
+      summary: 'Redis serializes the result and writes it back to the client socket as RESP.'
+    }
+  };
+
+  const redisNodes = Array.from(document.querySelectorAll('[data-redis-node]'));
+  const redisConnections = Array.from(document.querySelectorAll('[data-redis-connection]'));
+  const redisEdges = Array.from(document.querySelectorAll('[data-redis-connection] .redis-edge'));
+  const redisKind = document.getElementById('redis-system-kind');
+  const redisTitle = document.getElementById('redis-system-title-panel');
+  const redisSummary = document.getElementById('redis-system-summary');
+
+  function selectRedisSystemItem(id, trigger) {
+    const item = redisSystemItems[id];
+    if (!item) return;
+
+    const activeNames = new Set();
+    if (trigger.classList.contains('redis-node')) {
+      activeNames.add(id);
+      redisEdges
+        .filter((edge) => edge.dataset.edge.split(' ').includes(id))
+        .forEach((edge) => edge.dataset.edge.split(' ').forEach((name) => activeNames.add(name)));
+    } else {
+      const edge = trigger.querySelector('.redis-edge');
+      edge.dataset.edge.split(' ').forEach((name) => activeNames.add(name));
+    }
+
+    redisNodes.forEach((node) => {
+      const active = node.dataset.redisNode === id;
+      const related = activeNames.has(node.dataset.redisNode);
+      node.classList.toggle('is-active', active);
+      node.classList.toggle('is-muted', !related);
+      node.setAttribute('aria-pressed', String(active));
+    });
+    redisConnections.forEach((connection) => {
+      const active = connection.dataset.redisConnection === id;
+      const edge = connection.querySelector('.redis-edge');
+      const related = edge.dataset.edge.split(' ').some((name) => activeNames.has(name));
+      connection.classList.toggle('is-muted', !related);
+      connection.setAttribute('aria-pressed', String(active));
+      edge.classList.toggle('is-active', active || related);
+      edge.classList.toggle('is-muted', !related);
+    });
+
+    redisKind.textContent = item.kind;
+    redisTitle.textContent = item.title;
+    redisSummary.textContent = item.summary;
+  }
+
+  redisNodes.forEach((node) => {
+    node.addEventListener('click', () => selectRedisSystemItem(node.dataset.redisNode, node));
+    node.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectRedisSystemItem(node.dataset.redisNode, node);
+      }
+    });
+  });
+  redisConnections.forEach((connection) => {
+    connection.addEventListener('click', () => selectRedisSystemItem(connection.dataset.redisConnection, connection));
+    connection.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectRedisSystemItem(connection.dataset.redisConnection, connection);
+      }
+    });
+  });
+
+  const luaSystemItems = {
+    client: {
+      kind: 'Caller',
+      title: 'Client submits one script call',
+      summary: 'The application sends EVAL or EVALSHA with keys and arguments. From the client point of view, this replaces several round trips with one request.'
+    },
+    script: {
+      kind: 'Server-side logic',
+      title: 'Lua script runs inside Redis',
+      summary: 'Redis executes the Lua script on the server thread. The script can call Redis commands through redis.call and return a normal Redis reply.'
+    },
+    redis: {
+      kind: 'Shared state',
+      title: 'The keyspace is local to the script',
+      summary: 'The script reads the lock key directly in Redis memory. No value has to travel back to the application for client-side branching.'
+    },
+    get: {
+      kind: 'Read step',
+      title: 'Read the current owner token',
+      summary: 'GET lock:payment returns the token currently stored in the lock. The script uses that value immediately, before another client can run a command.'
+    },
+    compare: {
+      kind: 'Decision step',
+      title: 'Compare stored token with caller token',
+      summary: 'The script checks whether the lock still belongs to this worker. This is the correctness part that a plain DEL cannot provide.'
+    },
+    delete: {
+      kind: 'Safe write',
+      title: 'Delete only on token match',
+      summary: 'When the token matches, DEL removes the lock and returns success. The read, comparison, and delete happen as one atomic script.'
+    },
+    keep: {
+      kind: 'Safe no-op',
+      title: 'Return 0 on mismatch',
+      summary: 'When the token does not match, Redis leaves the key untouched. That prevents worker A from deleting worker B\'s renewed or re-acquired lock.'
+    },
+    submit: {
+      kind: 'Data movement',
+      title: 'EVAL request',
+      summary: 'The script body or script hash, key list, and argument list enter Redis as one command.'
+    },
+    read: {
+      kind: 'Data movement',
+      title: 'Script reads Redis memory',
+      summary: 'Lua executes next to Redis data, so the lock value is available without a client round trip.'
+    },
+    'read-lock': {
+      kind: 'Data movement',
+      title: 'GET result feeds the script',
+      summary: 'The returned token becomes local script state and is used for the comparison step.'
+    },
+    decide: {
+      kind: 'Branch',
+      title: 'The token comparison chooses the branch',
+      summary: 'The script chooses between a write branch and a no-op branch while Redis is still inside the same command.'
+    },
+    match: {
+      kind: 'Branch',
+      title: 'Matching token releases the lock',
+      summary: 'Only the owner token can release the lock. This protects short leases that expire and get acquired by another worker.'
+    },
+    mismatch: {
+      kind: 'Branch',
+      title: 'Mismatched token keeps the lock',
+      summary: 'If ownership changed, the script returns 0. The current lock value remains in Redis.'
+    },
+    reply: {
+      kind: 'Return path',
+      title: 'One final reply goes back',
+      summary: 'The client receives either the DEL result or 0. It never has to reason about a visible half-completed release.'
+    }
+  };
+
+  const luaNodes = Array.from(document.querySelectorAll('[data-lua-node]'));
+  const luaConnections = Array.from(document.querySelectorAll('[data-lua-connection]'));
+  const luaEdges = Array.from(document.querySelectorAll('[data-lua-connection] .redis-edge'));
+  const luaKind = document.getElementById('lua-system-kind');
+  const luaTitle = document.getElementById('lua-system-title-panel');
+  const luaSummary = document.getElementById('lua-system-summary');
+
+  function selectLuaSystemItem(id, trigger) {
+    const item = luaSystemItems[id];
+    if (!item) return;
+
+    const activeNames = new Set();
+    if (trigger.classList.contains('redis-node')) {
+      activeNames.add(id);
+      luaEdges
+        .filter((edge) => edge.dataset.edge.split(' ').includes(id))
+        .forEach((edge) => edge.dataset.edge.split(' ').forEach((name) => activeNames.add(name)));
+    } else {
+      const edge = trigger.querySelector('.redis-edge');
+      edge.dataset.edge.split(' ').forEach((name) => activeNames.add(name));
+    }
+
+    luaNodes.forEach((node) => {
+      const active = node.dataset.luaNode === id;
+      const related = activeNames.has(node.dataset.luaNode);
+      node.classList.toggle('is-active', active);
+      node.classList.toggle('is-muted', !related);
+      node.setAttribute('aria-pressed', String(active));
+    });
+    luaConnections.forEach((connection) => {
+      const active = connection.dataset.luaConnection === id;
+      const edge = connection.querySelector('.redis-edge');
+      const related = edge.dataset.edge.split(' ').some((name) => activeNames.has(name));
+      connection.classList.toggle('is-muted', !related);
+      connection.setAttribute('aria-pressed', String(active));
+      edge.classList.toggle('is-active', active || related);
+      edge.classList.toggle('is-muted', !related);
+    });
+
+    luaKind.textContent = item.kind;
+    luaTitle.textContent = item.title;
+    luaSummary.textContent = item.summary;
+  }
+
+  luaNodes.forEach((node) => {
+    node.addEventListener('click', () => selectLuaSystemItem(node.dataset.luaNode, node));
+    node.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectLuaSystemItem(node.dataset.luaNode, node);
+      }
+    });
+  });
+  luaConnections.forEach((connection) => {
+    connection.addEventListener('click', () => selectLuaSystemItem(connection.dataset.luaConnection, connection));
+    connection.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectLuaSystemItem(connection.dataset.luaConnection, connection);
+      }
+    });
+  });
+
+  const usecases = {
+    cache: {
+      title: 'Cache-aside',
+      model: 'Redis holds a copy of data whose durable home is somewhere else. Misses go to the database, then populate Redis with a TTL.',
+      risk: 'Risk: stale data, thundering herd on miss, and unsafe assumptions if Redis becomes the only copy.',
+      code: 'GET product:42\nSET product:42 "{\\"stock\\": 99}" EX 60\nTTL product:42',
+      diagram: 'cache'
+    },
+    'rate-limit': {
+      title: 'Rate limiter',
+      model: 'Redis keeps a shared counter per identity and window. Atomic increments make concurrent requests see one shared count.',
+      risk: 'Risk: fixed windows can burst at boundaries. A crash between INCR and EXPIRE can leak counters unless you use Lua or a single safer pattern.',
+      code: 'INCR rl:user:42:2026-06-16T12:00\nEXPIRE rl:user:42:2026-06-16T12:00 60\nGET rl:user:42:2026-06-16T12:00',
+      diagram: 'rate-limit'
+    },
+    lock: {
+      title: 'Lock or lease',
+      model: 'Redis stores a short-lived ownership marker. SET NX PX means create only when absent and expire automatically.',
+      risk: "Risk: leases expire while work continues. Release must check an owner token or one worker can delete another worker's lock.",
+      code: 'SET lock:payment:123 worker-a NX PX 5000\nGET lock:payment:123\nEVAL "<token checked DEL>" 1 lock:payment:123 worker-a',
+      diagram: 'lock'
+    },
+    queue: {
+      title: 'Work queue with Streams',
+      model: 'Redis Stream is an append-only log. Consumer groups track which messages were delivered and acknowledged.',
+      risk: 'Risk: Redis Streams are useful lightweight queues, but Kafka or a workflow engine may be better for long retention, replay, partition scale, and strong operational guarantees.',
+      code: 'XADD payments * id p1 amount 100\nXGROUP CREATE payments workers 0 MKSTREAM\nXREADGROUP GROUP workers worker-1 COUNT 1 STREAMS payments >\nXACK payments workers 1740000000000-0',
+      diagram: 'queue'
+    },
+    pubsub: {
+      title: 'Realtime Pub/Sub',
+      model: 'Publishers send messages to channels. Current subscribers receive messages immediately.',
+      risk: 'Risk: Pub/Sub is at-most-once. If a subscriber is disconnected, the message is gone. Use Streams when replay or ack matters.',
+      code: 'SUBSCRIBE fraud-alerts\nPUBLISH fraud-alerts "{\\"payment\\":\\"p1\\",\\"score\\":91}"',
+      diagram: 'pubsub'
+    },
+    ranking: {
+      title: 'Ranking and priority',
+      model: 'A sorted set stores unique members with scores. Redis maintains score order and can return ranges efficiently.',
+      risk: 'Risk: the score must encode the ordering rule. Complex filtering belongs elsewhere or needs a different Redis feature set.',
+      code: 'ZADD leaderboard 900 user:42 850 user:7\nZREVRANGE leaderboard 0 9 WITHSCORES\nZINCRBY leaderboard 25 user:7',
+      diagram: 'ranking'
+    },
+    dedup: {
+      title: 'Deduplication marker',
+      model: 'Redis stores short-lived markers for processed request IDs or event IDs. SET NX makes first writer win.',
+      risk: 'Risk: TTL must be longer than the replay window. If a duplicate arrives after expiry, Redis cannot remember it.',
+      code: 'SET idempotency:req-123 processed NX EX 86400\nGET idempotency:req-123',
+      diagram: 'dedup'
+    }
+  };
+
+  const diagramTemplates = {
+    cache: `
+      <svg viewBox="0 0 560 300" role="img" aria-label="Cache-aside flow">
+        <defs><marker id="uc-arrow-cache" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M1,1 L9,5 L1,9" fill="none" stroke="currentColor" stroke-width="2"/></marker></defs>
+        <rect class="diagram-box" x="28" y="106" width="112" height="62" rx="8"></rect>
+        <text x="84" y="143">app</text>
+        <rect class="diagram-box redis" x="224" y="72" width="128" height="92" rx="8"></rect>
+        <text x="288" y="111">Redis</text>
+        <text class="diagram-small" x="288" y="137">GET product:42</text>
+        <rect class="diagram-box db" x="420" y="106" width="104" height="92" rx="8"></rect>
+        <text x="472" y="147">DB</text>
+        <text class="diagram-small" x="472" y="172">truth</text>
+        <path class="diagram-stroke" marker-end="url(#uc-arrow-cache)" d="M140 137 H224"></path>
+        <path class="diagram-stroke diagram-blue" marker-end="url(#uc-arrow-cache)" d="M352 124 H420"></path>
+        <text class="diagram-small" x="370" y="108">miss</text>
+        <path class="diagram-stroke diagram-green" marker-end="url(#uc-arrow-cache)" d="M420 186 H288 V164"></path>
+        <text class="diagram-small" x="280" y="224">SET with TTL, next request hits Redis</text>
+      </svg>`,
+    'rate-limit': `
+      <svg viewBox="0 0 560 300" role="img" aria-label="Rate limiter flow">
+        <defs><marker id="uc-arrow-rate" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M1,1 L9,5 L1,9" fill="none" stroke="currentColor" stroke-width="2"/></marker></defs>
+        <rect class="diagram-box" x="28" y="110" width="126" height="62" rx="8"></rect>
+        <text x="91" y="147">request</text>
+        <rect class="diagram-box redis" x="218" y="72" width="142" height="120" rx="8"></rect>
+        <text x="289" y="111">Redis</text>
+        <text class="diagram-small" x="289" y="138">INCR rl:user</text>
+        <text class="diagram-small" x="289" y="161">EXPIRE 60</text>
+        <rect class="diagram-box good" x="424" y="68" width="104" height="58" rx="8"></rect>
+        <text x="476" y="104">allow</text>
+        <rect class="diagram-box warn" x="424" y="176" width="104" height="58" rx="8"></rect>
+        <text x="476" y="212">reject</text>
+        <path class="diagram-stroke" marker-end="url(#uc-arrow-rate)" d="M154 141 H218"></path>
+        <path class="diagram-stroke diagram-green" marker-end="url(#uc-arrow-rate)" d="M360 112 H424"></path>
+        <path class="diagram-stroke diagram-red" marker-end="url(#uc-arrow-rate)" d="M360 152 H392 V205 H424"></path>
+        <text class="diagram-small" x="280" y="247">Lua keeps INCR + EXPIRE atomic</text>
+      </svg>`,
+    lock: `
+      <svg viewBox="0 0 560 300" role="img" aria-label="Lock lease flow">
+        <defs><marker id="uc-arrow-lock" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M1,1 L9,5 L1,9" fill="none" stroke="currentColor" stroke-width="2"/></marker></defs>
+        <rect class="diagram-box" x="26" y="68" width="132" height="58" rx="8"></rect>
+        <text x="92" y="104">worker A</text>
+        <rect class="diagram-box" x="26" y="184" width="132" height="58" rx="8"></rect>
+        <text x="92" y="220">worker B</text>
+        <rect class="diagram-box redis" x="230" y="92" width="170" height="118" rx="8"></rect>
+        <text x="315" y="130">Redis</text>
+        <text class="diagram-small" x="315" y="158">lock:payment</text>
+        <text class="diagram-small" x="315" y="181">token=A</text>
+        <rect class="diagram-box warn" x="448" y="108" width="84" height="86" rx="8"></rect>
+        <text x="490" y="143">TTL</text>
+        <text class="diagram-small" x="490" y="167">expires</text>
+        <path class="diagram-stroke diagram-green" marker-end="url(#uc-arrow-lock)" d="M158 97 H230"></path>
+        <text class="diagram-small" x="170" y="82">SET NX PX</text>
+        <path class="diagram-stroke diagram-red" marker-end="url(#uc-arrow-lock)" d="M158 213 H194 V178 H230"></path>
+        <text class="diagram-small" x="166" y="236">wait or fail</text>
+        <path class="diagram-stroke diagram-red" marker-end="url(#uc-arrow-lock)" d="M400 151 H448"></path>
+      </svg>`,
+    queue: `
+      <svg viewBox="0 0 560 300" role="img" aria-label="Streams consumer group flow">
+        <defs><marker id="uc-arrow-queue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M1,1 L9,5 L1,9" fill="none" stroke="currentColor" stroke-width="2"/></marker></defs>
+        <rect class="diagram-box" x="26" y="106" width="118" height="62" rx="8"></rect>
+        <text x="85" y="143">producer</text>
+        <rect class="diagram-box redis" x="210" y="62" width="210" height="146" rx="8"></rect>
+        <text x="315" y="96">stream</text>
+        <rect class="diagram-box muted" x="235" y="122" width="44" height="34" rx="6"></rect>
+        <rect class="diagram-box muted" x="293" y="122" width="44" height="34" rx="6"></rect>
+        <rect class="diagram-box muted" x="351" y="122" width="44" height="34" rx="6"></rect>
+        <text class="diagram-small" x="315" y="184">pending entries list</text>
+        <rect class="diagram-box" x="462" y="106" width="76" height="62" rx="8"></rect>
+        <text x="500" y="143">worker</text>
+        <path class="diagram-stroke" marker-end="url(#uc-arrow-queue)" d="M144 137 H210"></path>
+        <text class="diagram-small" x="156" y="120">XADD</text>
+        <path class="diagram-stroke diagram-green" marker-end="url(#uc-arrow-queue)" d="M420 137 H462"></path>
+        <text class="diagram-small" x="426" y="120">read</text>
+        <path class="diagram-stroke diagram-blue" marker-end="url(#uc-arrow-queue)" d="M500 168 V236 H315 V208"></path>
+        <text class="diagram-small" x="402" y="254">XACK</text>
+      </svg>`,
+    pubsub: `
+      <svg viewBox="0 0 560 300" role="img" aria-label="Pub/Sub fanout flow">
+        <defs><marker id="uc-arrow-pubsub" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M1,1 L9,5 L1,9" fill="none" stroke="currentColor" stroke-width="2"/></marker></defs>
+        <rect class="diagram-box" x="28" y="116" width="104" height="62" rx="8"></rect>
+        <text x="80" y="153">pub</text>
+        <rect class="diagram-box redis" x="214" y="94" width="150" height="86" rx="8"></rect>
+        <text x="289" y="132">channel</text>
+        <text class="diagram-small" x="289" y="158">fraud-alerts</text>
+        <rect class="diagram-box good" x="436" y="56" width="94" height="58" rx="8"></rect>
+        <text x="483" y="92">sub A</text>
+        <rect class="diagram-box warn" x="436" y="190" width="94" height="58" rx="8"></rect>
+        <text x="483" y="226">sub B</text>
+        <path class="diagram-stroke" marker-end="url(#uc-arrow-pubsub)" d="M132 147 H214"></path>
+        <path class="diagram-stroke diagram-green" marker-end="url(#uc-arrow-pubsub)" d="M364 122 H400 V85 H436"></path>
+        <path class="diagram-stroke diagram-red" marker-end="url(#uc-arrow-pubsub)" d="M364 154 H400 V219 H436"></path>
+        <text class="diagram-small" x="280" y="274">offline subscriber misses message</text>
+      </svg>`,
+    ranking: `
+      <svg viewBox="0 0 560 300" role="img" aria-label="Sorted set ranking flow">
+        <defs><marker id="uc-arrow-ranking" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M1,1 L9,5 L1,9" fill="none" stroke="currentColor" stroke-width="2"/></marker></defs>
+        <rect class="diagram-box redis" x="54" y="52" width="452" height="184" rx="10"></rect>
+        <text x="280" y="88">sorted set</text>
+        <rect class="diagram-box good" x="104" y="124" width="134" height="64" rx="8"></rect>
+        <text class="diagram-small" x="171" y="151">user:42</text>
+        <text class="diagram-small" x="154" y="174">900</text>
+        <rect class="diagram-box warn" x="310" y="124" width="134" height="64" rx="8"></rect>
+        <text class="diagram-small" x="377" y="151">user:7</text>
+        <text class="diagram-small" x="364" y="174">850</text>
+        <path class="diagram-stroke diagram-green" marker-end="url(#uc-arrow-ranking)" d="M444 156 H486"></path>
+        <text class="diagram-small" x="280" y="254">ZREVRANGE returns highest score first</text>
+      </svg>`,
+    dedup: `
+      <svg viewBox="0 0 560 300" role="img" aria-label="Deduplication marker flow">
+        <defs><marker id="uc-arrow-dedup" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M1,1 L9,5 L1,9" fill="none" stroke="currentColor" stroke-width="2"/></marker></defs>
+        <rect class="diagram-box" x="26" y="88" width="138" height="62" rx="8"></rect>
+        <text x="95" y="125">request id</text>
+        <rect class="diagram-box redis" x="232" y="70" width="178" height="106" rx="8"></rect>
+        <text x="321" y="108">Redis</text>
+        <text class="diagram-small" x="321" y="136">SET idem:req NX</text>
+        <text class="diagram-small" x="290" y="158">EX 86400</text>
+        <rect class="diagram-box good" x="116" y="214" width="328" height="54" rx="8"></rect>
+        <text class="diagram-small" x="280" y="247">first request wins, duplicate sees marker</text>
+        <path class="diagram-stroke" marker-end="url(#uc-arrow-dedup)" d="M164 119 H232"></path>
+        <path class="diagram-stroke diagram-green" marker-end="url(#uc-arrow-dedup)" d="M321 176 V214"></path>
+      </svg>`
+  };
+
+  const tabs = Array.from(document.querySelectorAll('.usecase-tab'));
+  const title = document.getElementById('usecase-title');
+  const model = document.getElementById('usecase-model');
+  const risk = document.getElementById('usecase-risk');
+  const code = document.getElementById('usecase-code');
+  const diagram = document.getElementById('usecase-diagram');
+
+  function renderUsecase(selected) {
+    title.textContent = selected.title;
+    model.textContent = selected.model;
+    risk.textContent = selected.risk;
+    code.textContent = selected.code;
+    diagram.innerHTML = diagramTemplates[selected.diagram];
+    diagram.setAttribute('aria-label', `${selected.title} visual aid`);
+  }
+
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      tabs.forEach((item) => item.classList.remove('active'));
+      tab.classList.add('active');
+
+      const selected = usecases[tab.dataset.usecase];
+      renderUsecase(selected);
+    });
+  });
+
+  renderUsecase(usecases.cache);
+</script>
+
+</body>
+</html>

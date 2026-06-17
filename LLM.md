@@ -209,6 +209,7 @@ Completed documentation:
 
 - `docs/postgres/overview.html`: standalone PostgreSQL overview and request-flow visual
 - `docs/postgres/lost-update.html`: interactive warehouse-stock lost-update explainer for the concurrency lab
+- `docs/redis/overview.html`: Redis internals, data structures, use cases, persistence, eviction, and Lua scripting overview
 - `docs/toolbox/overview.html`: systems-tool mental models, comparisons, workload selector, and clickable payment architecture
 - `docs/index.html`: topic landing page with links to current explainers
 
@@ -234,8 +235,7 @@ docs/       Durable HTML learning pages
 ## Next Session
 
 The warehouse concurrency lab is implemented, measured, documented, and cleanly
-torn down. Continue by observing lock behavior:
+torn down. Redis overview documentation is started. Continue with one of these:
 
-1. Run locked mode while inspecting `pg_locks` and `pg_stat_activity`.
-2. Record which sessions wait and how long the hot product queues work.
-3. Add lock evidence to the README and HTML explainer.
+1. Run locked PostgreSQL mode while inspecting `pg_locks` and `pg_stat_activity`, then add lock evidence to the README and HTML explainer.
+2. Build a no-application-code Redis CLI lab with Docker Compose, `redis-cli`, and command scripts for cache, rate limiting, locks, streams, Pub/Sub, and sorted sets.
