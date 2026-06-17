@@ -276,6 +276,25 @@ th {
 .run-card h3 { margin-top: 0; }
 .run-card p { color: var(--muted); font-size: 14px; margin-bottom: 0; }
 
+.terminal-shot {
+  margin: 18px 0 26px;
+}
+
+.terminal-shot img {
+  background: #0b1018;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.terminal-shot figcaption {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 8px;
+}
+
 .lab-nav {
   display: flex;
   flex-wrap: wrap;

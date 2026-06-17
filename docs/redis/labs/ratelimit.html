@@ -53,15 +53,10 @@
   <h2>What Actually Fails</h2>
   <p>The broken run sends one full batch just before a clock boundary and another full batch just after it. With a limit of 8 per 10 seconds, the fixed-window limiter can allow 16 requests in roughly 400ms.</p>
 
-  <pre><code>phase 1: 8 requests BEFORE window boundary
-ALLOW  req=8    count=8/8  window-resets-in=1s
-
-fixed window counter reset to 0
-
-phase 2: 8 requests AFTER window boundary
-ALLOW  burst=8  count=8/8  window-resets-in=10s
-
-RESULT: total allowed = 16, configured limit = 8</code></pre>
+  <figure class="terminal-shot">
+    <img src="assets/ratelimit-break-terminal.svg" alt="Terminal screenshot of make break showing a fixed-window boundary burst allowing 16 requests with limit 8." />
+    <figcaption>Captured from a real <code>make break</code> run. The fixed-window counter resets at the boundary and allows both batches.</figcaption>
+  </figure>
 
   <p>The fixed-window script did not lose an update. It counted exactly what it was asked to count. The problem is that two adjacent fixed windows can overlap into a very small real-time burst.</p>
 
@@ -118,34 +113,13 @@ return {1, count + 1}</code></pre>
   </div>
 
   <h2>How The Fixed Run Should Look</h2>
-  <pre><code>make break
-
-What will happen: one burst lands before a window boundary and another just after it.
-Watch for: both phases allowed because the fixed counter resets at the boundary.
-
-ALLOW  req=1    count=1/8
-...
-ALLOW  req=8    count=8/8
-
-fixed window counter reset to 0
-
-ALLOW  burst=1  count=1/8
-...
-ALLOW  burst=8  count=8/8</code></pre>
+  <p>The evidence is in the result block: <code>phase-1 allowed = 8</code>, <code>phase-2 allowed = 8</code>, and <code>total in ~400ms span = 16</code>. That is why <code>make break</code> exits 1.</p>
 
   <h2>How The Sliding Run Should Look</h2>
-  <pre><code>make test
-
-What will happen: same boundary timing, but requests are counted in a rolling window.
-Watch for: phase-2 requests denied because phase-1 entries are still recent.
-
-ALLOW  req=8    window-count=8/8
-
-sliding window still contains phase-1 entries
-
-DENY   burst=1  window-count=8/8  (phase-1 still counted)
-...
-DENY   burst=8  window-count=8/8  (phase-1 still counted)</code></pre>
+  <figure class="terminal-shot">
+    <img src="assets/ratelimit-test-terminal.svg" alt="Terminal screenshot of make test showing sliding-window rate limiting denying the second burst." />
+    <figcaption>Captured from a real <code>make test</code> run. Phase-1 entries remain inside the rolling window, so phase-2 is denied.</figcaption>
+  </figure>
 
   <h2>Run Targets</h2>
   <div class="run-grid">
