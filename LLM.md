@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Keystone is a hands-on distributed-systems and fintech engineering repository. Concepts are learned through a three-pass loop:
+Keystone is a hands-on backend engineering, distributed-systems, security, and fintech engineering repository. Concepts are learned through a three-pass loop:
 
 1. Read a focused primer.
 2. Build and break a working system or isolated lab.
@@ -211,7 +211,7 @@ Completed documentation:
 - `docs/postgres/lost-update.html`: interactive warehouse-stock lost-update explainer for the concurrency lab
 - `docs/redis/overview.html`: Redis internals, data structures, use cases, persistence, eviction, and Lua scripting overview
 - `docs/toolbox/overview.html`: systems-tool mental models, comparisons, workload selector, and clickable payment architecture
-- `docs/index.html`: topic landing page with links to current explainers
+- `docs/index.html`: backend engineering map with tracks for protocols, storage, distributed systems, messaging, reliability, security, observability, APIs, deployment, and runtime topics
 
 In-progress lab: `labs/postgres/concurrency/` reproduces a lost update while
 reserving warehouse stock and compares four modes (naive, locked, atomic,
@@ -235,7 +235,7 @@ docs/       Durable HTML learning pages
 ## Next Session
 
 The warehouse concurrency lab is implemented, measured, documented, and cleanly
-torn down. Redis overview documentation is started. Continue with one of these:
+torn down. Redis overview documentation is published. Continue with one of these:
 
 1. Run locked PostgreSQL mode while inspecting `pg_locks` and `pg_stat_activity`, then add lock evidence to the README and HTML explainer.
 2. Build a no-application-code Redis CLI lab with Docker Compose, `redis-cli`, and command scripts for cache, rate limiting, locks, streams, Pub/Sub, and sorted sets.
