@@ -1,2 +1,6 @@
 graphify-out/
 .cache/
+
+# compiled lab binaries
+labs/**/src/pgmig
+.DS_Store
