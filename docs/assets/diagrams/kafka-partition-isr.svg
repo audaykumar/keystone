@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 660" role="img" aria-labelledby="title desc">
+  <title id="title">Kafka partition replication and high watermark</title>
+  <desc id="desc">A Kafka partition leader with two followers, log end offsets, high watermark, ISR membership, producer acks, and consumer visibility.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9ba7b4"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #e6edf3; }
+      .title { font-size: 28px; font-weight: 750; }
+      .label { font-size: 18px; font-weight: 700; }
+      .small { font-size: 15px; }
+      .tiny { font-size: 13px; }
+      .muted { fill: #9ba7b4; }
+      .box { fill: #161b22; stroke: #30363d; stroke-width: 2; rx: 12; }
+      .leader { fill: #142236; stroke: #58a6ff; }
+      .follower { fill: #14251d; stroke: #56d364; }
+      .lagging { fill: #2a2416; stroke: #e3b341; }
+      .cell { fill: #202b38; stroke: #30363d; stroke-width: 1.5; rx: 4; }
+      .committed { fill: #16351f; stroke: #56d364; }
+      .uncommitted { fill: #332416; stroke: #e3b341; }
+      .line { stroke: #9ba7b4; stroke-width: 2.5; marker-end: url(#arrow); fill: none; }
+      .hw { stroke: #56d364; stroke-width: 4; stroke-dasharray: 8 6; }
+      .leo { stroke: #e3b341; stroke-width: 3; stroke-dasharray: 5 6; }
+    </style>
+  </defs>
+  <rect width="1120" height="660" fill="#0d1117"/>
+  <text class="title" x="44" y="54">Kafka partition: leader, followers, ISR, high watermark</text>
+  <text class="muted small" x="44" y="84">Consumers read only committed offsets. acks=all waits for enough in-sync replicas.</text>
+
+  <rect class="box leader" x="170" y="150" width="760" height="112"/>
+  <text class="label" x="198" y="184">Leader replica</text>
+  <text class="muted small" x="198" y="214">Log end offset 8</text>
+  <g transform="translate(405 174)">
+    <rect class="cell committed" x="0" y="0" width="48" height="46"/><text class="tiny" x="18" y="29">0</text>
+    <rect class="cell committed" x="52" y="0" width="48" height="46"/><text class="tiny" x="70" y="29">1</text>
+    <rect class="cell committed" x="104" y="0" width="48" height="46"/><text class="tiny" x="122" y="29">2</text>
+    <rect class="cell committed" x="156" y="0" width="48" height="46"/><text class="tiny" x="174" y="29">3</text>
+    <rect class="cell committed" x="208" y="0" width="48" height="46"/><text class="tiny" x="226" y="29">4</text>
+    <rect class="cell committed" x="260" y="0" width="48" height="46"/><text class="tiny" x="278" y="29">5</text>
+    <rect class="cell uncommitted" x="312" y="0" width="48" height="46"/><text class="tiny" x="330" y="29">6</text>
+    <rect class="cell uncommitted" x="364" y="0" width="48" height="46"/><text class="tiny" x="382" y="29">7</text>
+  </g>
+
+  <rect class="box follower" x="170" y="310" width="760" height="100"/>
+  <text class="label" x="198" y="344">Follower A in ISR</text>
+  <text class="muted small" x="198" y="374">replicated through 5</text>
+  <g transform="translate(405 330)">
+    <rect class="cell committed" x="0" y="0" width="48" height="42"/><rect class="cell committed" x="52" y="0" width="48" height="42"/>
+    <rect class="cell committed" x="104" y="0" width="48" height="42"/><rect class="cell committed" x="156" y="0" width="48" height="42"/>
+    <rect class="cell committed" x="208" y="0" width="48" height="42"/><rect class="cell committed" x="260" y="0" width="48" height="42"/>
+  </g>
+
+  <rect class="box lagging" x="170" y="450" width="760" height="100"/>
+  <text class="label" x="198" y="484">Follower B lagging</text>
+  <text class="muted small" x="198" y="514">not enough for offset 6 yet</text>
+  <g transform="translate(405 470)">
+    <rect class="cell committed" x="0" y="0" width="48" height="42"/><rect class="cell committed" x="52" y="0" width="48" height="42"/>
+    <rect class="cell committed" x="104" y="0" width="48" height="42"/><rect class="cell committed" x="156" y="0" width="48" height="42"/>
+    <rect class="cell committed" x="208" y="0" width="48" height="42"/><rect class="cell committed" x="260" y="0" width="48" height="42"/>
+  </g>
+
+  <line class="hw" x1="715" y1="132" x2="715" y2="568"/>
+  <text class="label" x="738" y="598">High watermark = 6</text>
+  <text class="muted small" x="738" y="623">consumer-visible range: offsets 0 through 5</text>
+  <line class="leo" x1="820" y1="132" x2="820" y2="262"/>
+  <text class="muted small" x="842" y="144">leader LEO = 8</text>
+
+  <rect class="box" x="44" y="184" width="96" height="64"/>
+  <text class="small" x="68" y="222">producer</text>
+  <path class="line" d="M140 216 H170"/>
+  <text class="muted tiny" x="52" y="270">acks=all waits for configured ISR</text>
+
+  <rect class="box" x="956" y="320" width="120" height="74"/>
+  <text class="small" x="980" y="354">consumer</text>
+  <text class="muted tiny" x="976" y="377">reads to HW</text>
+  <path class="line" d="M956 356 H715"/>
+</svg>

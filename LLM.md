@@ -176,7 +176,8 @@ The HTML pages are the durable teach-back and revision interface. They should ca
 - Add focused pages only when the deeper material exists.
 - Link new pages from `docs/index.html` and relevant existing pages.
 - Load `docs/components/nav.js` so return-to-index navigation remains visible.
-- Topic pages should read as learning notes, not as lab manuals. The page should teach the topic first; the lab exists as evidence that makes the concept concrete.
+- Topic pages should read as learning notes, not as lab manuals. The page should teach the topic first and pass the lab-deletion test: removing the "Lab evidence" section should leave the concept explanation complete.
+- Sections before "Lab evidence" must not reference the lab, its Make targets, its scenario nouns, or its file paths. The lab appears in exactly one evidence section plus the code-pointers table.
 - Preferred topic page order:
   1. Topic title and one-sentence purpose.
   2. TLDR or Quick Grasp with the most important details.
@@ -233,7 +234,7 @@ Completed documentation:
 - `docs/postgres/overview.html`: standalone PostgreSQL overview and request-flow visual
 - `docs/postgres/lost-update.html`: interactive warehouse-stock lost-update explainer for the concurrency lab
 - `docs/postgres/migrations.html`: zero-downtime migrations with measured lock-queue outage evidence
-- `docs/kafka/overview.html`: Kafka internals — partitions, ISR, acks contract, consumer groups
+- `docs/kafka/overview.html`: Kafka internals: partitions, ISR, acks contract, consumer groups
 - `docs/kafka/outbox.html`: transactional outbox + CDC with measured dual-write loss evidence
 - `docs/delivery-semantics/overview.html`: delivery semantics and idempotent consumers with measured balance evidence
 - `docs/redis/overview.html`: Redis internals, data structures, use cases, persistence, eviction, and Lua scripting overview
@@ -242,7 +243,7 @@ Completed documentation:
 - `docs/index.html`: backend engineering map with tracks for protocols, storage, distributed systems, messaging, reliability, security, observability, APIs, deployment, and runtime topics
 
 All new topic pages share `docs/assets/topic.css` (copied from the Redis lab
-stylesheet) and end with a "Further Reading & Watching" references section —
+stylesheet) and end with a "Further Reading & Watching" references section;
 every lab README carries a matching References section.
 
 Completed labs (all verified end to end with real captured evidence, full
@@ -253,7 +254,7 @@ teardown confirmed):
   two-tier tuple/transactionid queue evidence.
 - `labs/postgres/migrations/`: zero-downtime migrations. Measured: 28.0s
   lock-queue outage vs 1.03s worst-case with `lock_timeout`; batched
-  backfill; NOT VALID → VALIDATE → SET NOT NULL; CREATE INDEX CONCURRENTLY.
+  backfill; NOT VALID, VALIDATE, SET NOT NULL; CREATE INDEX CONCURRENTLY.
 - `labs/kafka/internals/`: 3-broker KRaft cluster, keyed produce, consumer
   groups, sequence audit. Happy path measured (incl. a 3x hot-partition skew
   from 10 keys on 6 partitions); the broker-kill acks=1 loss scenario is
@@ -286,7 +287,7 @@ docs/       Durable HTML learning pages
 Phase 1 (Postgres) and Phase 2 (Kafka) labs are implemented, measured, and
 documented. Continue with one of these:
 
-1. Start `projects/ledger/` — the Python multi-currency ledger, thin first
+1. Start `projects/ledger/`: the Python multi-currency ledger, thin first
    slice: accounts + single-currency transfer, Postgres, migrations, Docker
    lifecycle contract. Pair with fintech topic F1 (money data correctness).
 2. Run and capture the `labs/kafka/internals` broker-kill acks=1 loss

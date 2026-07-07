@@ -1,0 +1,7 @@
+.terminal-shot {
+  overflow-x: auto;
+}
+
+.terminal-shot img[src$=".svg"] {
+  min-width: 760px;
+}

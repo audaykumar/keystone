@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 600" role="img" aria-labelledby="title desc">
+  <title id="title">Idempotent consumer transaction</title>
+  <desc id="desc">A consumer receives an event, inserts the event id into a processed events table, applies the business effect in the same transaction, and commits offset after the durable effect.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9ba7b4"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #e6edf3; }
+      .title { font-size: 28px; font-weight: 750; }
+      .label { font-size: 18px; font-weight: 700; }
+      .small { font-size: 15px; }
+      .muted { fill: #9ba7b4; }
+      .box { fill: #161b22; stroke: #30363d; stroke-width: 2; rx: 12; }
+      .blue { fill: #142236; stroke: #58a6ff; }
+      .green { fill: #14251d; stroke: #56d364; }
+      .yellow { fill: #2a2416; stroke: #e3b341; }
+      .red { fill: #2d1b1e; stroke: #ff7b72; }
+      .line { stroke: #9ba7b4; stroke-width: 2.5; marker-end: url(#arrow); fill: none; }
+      .tx { fill: none; stroke: #56d364; stroke-width: 3; stroke-dasharray: 10 8; rx: 18; }
+    </style>
+  </defs>
+  <rect width="1100" height="600" fill="#0d1117"/>
+  <text class="title" x="44" y="54">Idempotent consumer: one transaction owns the effect</text>
+  <text class="muted small" x="44" y="84">Dedup and side effect must commit together. Offset commit happens after that durable effect.</text>
+
+  <rect class="box blue" x="70" y="190" width="160" height="96"/>
+  <text class="label" x="112" y="228">Broker</text>
+  <text class="muted small" x="98" y="254">event id: E42</text>
+  <path class="line" d="M230 238 H315"/>
+
+  <rect class="box" x="315" y="178" width="170" height="120"/>
+  <text class="label" x="354" y="218">Consumer</text>
+  <text class="muted small" x="342" y="248">begin DB tx</text>
+  <path class="line" d="M485 238 H570"/>
+
+  <rect class="tx" x="560" y="130" width="410" height="250"/>
+  <text class="label" x="592" y="166">Database transaction</text>
+  <rect class="box green" x="600" y="195" width="160" height="90"/>
+  <text class="label" x="632" y="229">Dedup</text>
+  <text class="muted small" x="622" y="255">insert E42</text>
+  <path class="line" d="M760 240 H810"/>
+  <rect class="box green" x="810" y="195" width="130" height="90"/>
+  <text class="label" x="842" y="229">Effect</text>
+  <text class="muted small" x="836" y="255">write state</text>
+
+  <path class="line" d="M875 285 V438 H692"/>
+  <rect class="box yellow" x="530" y="405" width="162" height="86"/>
+  <text class="label" x="560" y="438">Commit</text>
+  <text class="muted small" x="558" y="464">effect durable</text>
+  <path class="line" d="M530 448 H380 V298"/>
+  <rect class="box blue" x="242" y="405" width="170" height="86"/>
+  <text class="label" x="272" y="438">Commit offset</text>
+  <text class="muted small" x="266" y="464">after DB commit</text>
+
+  <rect class="box red" x="755" y="420" width="270" height="86"/>
+  <text class="label" x="786" y="453">Duplicate replay</text>
+  <text class="muted small" x="786" y="479">E42 insert conflicts, effect skipped</text>
+</svg>

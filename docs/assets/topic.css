@@ -302,6 +302,7 @@ th {
 
 .terminal-shot {
   margin: 18px 0 26px;
+  overflow-x: auto;
 }
 
 .terminal-shot img {
@@ -311,6 +312,10 @@ th {
   display: block;
   height: auto;
   width: 100%;
+}
+
+.terminal-shot img[src$=".svg"] {
+  min-width: 760px;
 }
 
 .terminal-shot figcaption {
