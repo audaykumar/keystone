@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Delivery Semantics | keystone</title>
+  <link rel="stylesheet" href="../assets/topic.css" />
+</head>
+<body>
+<div id="site-nav"></div>
+<script src="../components/nav.js?v=logo1"></script>
+
+<main>
+  <div class="crumbs"><a href="../index.html">keystone</a><span>/</span><span>Delivery semantics</span></div>
+  <h1>Delivery Semantics: Why Exactly-Once Is Something You Build</h1>
+  <p class="subtitle">Between two separate systems, exactly-once <em>delivery</em> is impossible; exactly-once <em>effect</em> is an engineering pattern. The difference lives in one crash window every consumer has: the gap between processing a message and recording that it was processed.</p>
+
+  <h2>TLDR</h2>
+  <div class="callout">
+    <strong>Quick brief</strong>
+    <ul class="tldr-list">
+      <li><strong>The impossibility is simple:</strong> apply-then-record duplicates on crash; record-then-apply loses on crash. No third ordering exists, so pick a side and engineer the consequence away.</li>
+      <li><strong>At-least-once + idempotent processing = exactly-once effect.</strong> This is the standard answer, and the idempotency lives in the consumer, not the broker.</li>
+      <li><strong>The cheapest dedupe is a primary key:</strong> insert the event id and apply the effect in the same database transaction; a replay conflicts and becomes a no-op.</li>
+      <li><strong>Kafka EOS covers Kafka-to-Kafka.</strong> The moment a side effect leaves Kafka — a database row, an HTTP call — its transactions no longer protect you.</li>
+    </ul>
+  </div>
+
+  <h2>Mental Model</h2>
+  <p>A consumer is a loop with two obligations per message: do the work, and move the bookmark. A crash can land between them, and the order you chose decides what the restart does:</p>
+  <div class="diagram-shell" style="grid-template-columns: 1fr;">
+    <div class="flow-diagram">
+      <div class="flow-row three">
+        <div class="flow-node bad"><strong>at-most-once</strong><span>move bookmark → CRASH → work never happens; restart skips it</span></div>
+        <div class="flow-node warn"><strong>at-least-once</strong><span>do work → CRASH → bookmark stale; restart redoes the work</span></div>
+        <div class="flow-node good"><strong>idempotent</strong><span>do work + remember event id atomically → redo becomes a no-op</span></div>
+      </div>
+    </div>
+  </div>
+  <p>With money, the three have names: at-most-once loses credits, at-least-once double-credits, and idempotent balances to the cent. That is the whole topic; everything else is implementation.</p>
+
+  <h2>Ground-Up Explanation</h2>
+  <h3>Why the network makes retries mandatory</h3>
+  <p>A sender that gets no acknowledgement cannot distinguish "message lost" from "ack lost". If it cares about the message, it must resend — and if the ack was the thing that got lost, the resend is a duplicate. Retries are therefore not a bug source; they are the correctness mechanism, and duplicates are their unavoidable exhaust. Systems that "never duplicate" are systems that silently lose.</p>
+
+  <h3>The idempotent consumer</h3>
+  <p>The pattern that closes the loop is small enough to memorize:</p>
+  <pre><code>BEGIN;
+INSERT INTO processed_events (event_id) VALUES ($1)
+  ON CONFLICT DO NOTHING;          -- 0 rows = already applied
+-- only if the insert inserted:
+UPDATE balances SET balance_cents = balance_cents + 100
+  WHERE account_id = 'acct-1';
+COMMIT;                            -- check and apply are one atom</code></pre>
+  <p>The essential property: the duplicate check and the side effect commit together. Checking in Redis and writing in Postgres reintroduces the same crash window one layer down. Natural idempotency (e.g. <code>SET status = 'paid'</code>) achieves the same end without the table, when the operation allows it.</p>
+
+  <h3>What Kafka's "exactly-once semantics" actually is</h3>
+  <p>Kafka EOS combines the idempotent producer (broker dedupes retries by sequence number within a partition) with transactions (atomic writes across topics, including the offsets topic). A consume-transform-produce pipeline can be exactly-once end to end <em>within Kafka</em>. It is genuine and useful — and it ends at Kafka's edge. Your database does not participate in a Kafka transaction; the idempotent-consumer pattern is still yours to build.</p>
+
+  <h2>Lab Evidence</h2>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/kafka/delivery"><code>labs/kafka/delivery</code></a>: 1,000 payment events, each crediting 100 cents, applied to a Postgres balance by a consumer that hard-crashes (<code>os.Exit</code>, no cleanup) after event 500. The verify step compares the balance to the exact expected 100,000 cents.</p>
+  <div class="run-grid">
+    <div class="run-card"><h3><code>make break</code></h3><p>at-least-once: apply, crash, replay. Verify reports an overshoot and exits 1 — money was created.</p></div>
+    <div class="run-card"><h3><code>make lose</code></h3><p>at-most-once: commit, crash, skip. Verify reports a shortfall and exits 1 — money vanished.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>idempotent: same crash, dedupe insert in the credit's transaction. Verify is exact, exit 0.</p></div>
+  </div>
+  <h3>Measured: the same crash, three balances</h3>
+  <p>From real runs on 2026-07-07 (1,000 events, crash near event 500, offsets batch-committed every 100 messages):</p>
+  <pre><code>at-least-once:  applied=600 after restart (100 replayed)
+                balance=110000, expected=100000 → overshoot 10000. exit 1
+
+at-most-once:   CRASH after committing offset for pay-499, before applying it
+                balance= 99900, expected=100000 → shortfall 100. exit 1
+
+idempotent:     applied=500 skipped-as-duplicate=100
+                balance=100000, expected=100000 → exact. exit 0</code></pre>
+  <p>The overshoot equals the replay window exactly: the last batch commit covered event 400, so 100 events replayed. The idempotent consumer replayed the same 100 and skipped every one inside the credit's own transaction.</p>
+
+  <h2>Production Notes</h2>
+  <ul>
+    <li>Producers need stable event ids for consumer dedupe to mean anything. Generate the id where the event is born and carry it end to end — the same discipline as API idempotency keys.</li>
+    <li>The dedupe table needs retention (delete rows older than the topic's retention plus slack); it cannot grow forever, and it cannot be shorter than your replay horizon.</li>
+    <li>Dedupe keys must be scoped: <code>event_id</code> globally unique, or <code>(consumer, event_id)</code> when multiple consumers apply the same stream differently.</li>
+    <li>At-most-once has legitimate uses — metrics, ephemeral notifications — anywhere a loss is cheaper than a duplicate. Choose it explicitly, not by accident of commit order.</li>
+    <li>Reconciliation is the backstop: even with idempotency, fintech systems compare independent records (ledger vs provider reports) because bugs, not just crashes, create divergence.</li>
+  </ul>
+
+  <h2>Code Pointers</h2>
+  <table>
+    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/cmd/delivery/main.go"><code>cmd/delivery/main.go</code></a></td><td>All three semantics differ only in the placement of <code>CommitMessages</code> and one dedupe insert — see <code>consume</code> and <code>apply</code>.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/delivery/migrations/001_ledger.sql"><code>migrations/001_ledger.sql</code></a></td><td>The dedupe table: a primary key doing distributed-systems work.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Further Reading &amp; Watching</h2>
+  <ul class="source-list">
+    <li><a href="https://bravenewgeek.com/you-cannot-have-exactly-once-delivery/">You Cannot Have Exactly-Once Delivery</a> — Tyler Treat. The impossibility argument in three pages.</li>
+    <li><a href="https://www.confluent.io/blog/exactly-once-semantics-are-possible-heres-how-apache-kafka-does-it/">Exactly-Once Semantics Are Possible: Here's How Kafka Does It</a> — Neha Narkhede. What EOS covers, precisely.</li>
+    <li><a href="https://stripe.com/blog/idempotency">Designing robust and predictable APIs with idempotency</a> — Stripe. The same pattern at the API boundary, from the company that made it famous.</li>
+    <li><a href="https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/">Making retries safe with idempotent APIs</a> — AWS Builders' Library.</li>
+    <li><a href="https://queue.acm.org/detail.cfm?id=2187821">Idempotence Is Not a Medical Condition</a> — Pat Helland, ACM Queue. The classic on messaging reality in large systems.</li>
+    <li><a href="https://microservices.io/patterns/communication-style/idempotent-consumer.html">Pattern: Idempotent consumer</a> — Chris Richardson.</li>
+    <li>Book: Martin Kleppmann, <em>Designing Data-Intensive Applications</em>, ch. 11 — the "fault tolerance" section unpacks exactly-once rigorously.</li>
+  </ul>
+</main>
+
+</body>
+</html>

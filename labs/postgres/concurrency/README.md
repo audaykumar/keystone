@@ -128,7 +128,70 @@ All four modes and the atomic oversubscription case have been run successfully.
 Complete teardown has also been verified: no project container, network, volume,
 or local driver image remained. Lock inspection remains.
 
-## Lab checklist
+## Lock inspection
 
-1. Inspect `pg_stat_activity` and `pg_locks` during locked mode.
-2. Add lock evidence to this README and the HTML explainer.
+Two committed queries expose what the locked mode actually does inside PostgreSQL:
+
+- `scripts/lock_inspect.sql`: every lock held or awaited by lab backends, joined
+  to `pg_stat_activity` for state, wait events, and the running query.
+- `scripts/lock_waits.sql`: blocking chains via `pg_blocking_pids()`, which
+  resolves the true blocker even when several waiters queue behind one holder.
+
+Run them while a locked-mode run is active:
+
+```bash
+make test          # terminal 1: 8 workers contend on the hot product row
+make locks         # terminal 2: one lock snapshot
+make waits         # terminal 2: who waits on whom
+make locks-watch   # terminal 2: poll blocking chains every 500ms
+```
+
+### Measured lock evidence (2026-07-07, locked mode, 8 workers, 5ms jitter)
+
+`make locks` during the run shows the queue has two tiers, not one:
+
+```text
+ pid | state  | wait_event    | locktype      | mode                | granted | relation | xid
+ 147 | active | transactionid | transactionid | ShareLock           | f       |          | 1138
+ 142 | active | tuple         | tuple         | AccessExclusiveLock | f       | products |
+ 143 | active | tuple         | tuple         | AccessExclusiveLock | f       | products |
+ 144 | active | tuple         | tuple         | AccessExclusiveLock | f       | products |
+ ...
+ 146 | idle in transaction |  | transactionid | ExclusiveLock       | t       |          | 1138
+```
+
+And `make waits` (via `pg_blocking_pids()`):
+
+```text
+ waiting_pid | blocking_pid | wait_event    | waiting_query
+         143 |          148 | transactionid | SELECT available_stock ... FOR UPDATE
+         142 |          146 | tuple         | SELECT available_stock ... FOR UPDATE
+         144 |          143 | tuple         | SELECT available_stock ... FOR UPDATE
+         145 |          143 | tuple         | SELECT available_stock ... FOR UPDATE
+```
+
+What the snapshot teaches:
+
+- **Row locks are not in `pg_locks` per row** (that would not scale). The
+  current holder (pid 146) marks the tuple on disk and holds an
+  `ExclusiveLock` on its own transaction id (`xid 1138`).
+- **Exactly one waiter is "next in line":** it holds a granted
+  `AccessExclusiveLock` on the *tuple* and waits with a `ShareLock` on the
+  holder's *transaction id* (`wait_event = transactionid`). It wakes the
+  moment xid 1138 commits.
+- **Everyone else queues on the tuple lock** (`wait_event = tuple`,
+  `granted = f`). This two-tier structure is how PostgreSQL keeps row-lock
+  handoff fair (FIFO) without storing per-row lock state in shared memory.
+- The holder shows `idle in transaction` between its SELECT ... FOR UPDATE
+  and its UPDATE — the driver's 5ms jitter window, which is exactly where
+  the queue builds. That wait chain is the low throughput of locked mode
+  (162/s vs atomic's 1,577/s above).
+
+## References
+
+- PostgreSQL docs: [Explicit Locking](https://www.postgresql.org/docs/current/explicit-locking.html), [pg_locks view](https://www.postgresql.org/docs/current/view-pg-locks.html), [Transaction Isolation](https://www.postgresql.org/docs/current/transaction-iso.html)
+- Martin Kleppmann, *Designing Data-Intensive Applications*, ch. 7 "Transactions" (weak isolation, lost updates, SSI)
+- [PostgreSQL rocks, except when it blocks: understanding locks](https://www.citusdata.com/blog/2018/02/15/when-postgresql-blocks/) — Marco Slot, Citus
+- [Postgres Locking Revealed](https://engineering.nordeus.com/postgres-locking-revealed/) — Nordeus engineering
+- [Lock Monitoring](https://wiki.postgresql.org/wiki/Lock_Monitoring) — PostgreSQL wiki, canonical lock-debugging queries
+- Jepsen: [PostgreSQL 12.3 analysis](https://jepsen.io/analyses/postgresql-12.3) — serializability edge cases under test

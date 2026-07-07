@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Outbox Pattern + CDC | keystone</title>
+  <link rel="stylesheet" href="../assets/topic.css" />
+</head>
+<body>
+<div id="site-nav"></div>
+<script src="../components/nav.js?v=logo1"></script>
+
+<main>
+  <div class="crumbs"><a href="overview.html">Kafka</a><span>/</span><span>Outbox + CDC</span></div>
+  <h1>The Transactional Outbox: Killing the Dual-Write Gap</h1>
+  <p class="subtitle">Any service that writes to its database and publishes an event performs two writes that no transaction spans. The outbox pattern closes the gap by making the event a database row, then letting change data capture do the publishing.</p>
+
+  <h2>TLDR</h2>
+  <div class="callout">
+    <strong>Quick brief</strong>
+    <ul class="tldr-list">
+      <li><strong>The dual-write gap:</strong> commit to Postgres, then publish to Kafka — a crash between the two produces committed state with no event. Reverse the order and you get events for state that never committed. The gap moves; it never closes.</li>
+      <li><strong>The fix is one insert:</strong> write the event into an <code>outbox</code> table in the same transaction as the state change. The database transaction is the only atomicity you need.</li>
+      <li><strong>CDC does the publishing:</strong> Debezium tails the WAL through a replication slot and emits committed outbox rows to Kafka, in commit order.</li>
+      <li><strong>CDC is at-least-once:</strong> connector restarts can re-emit rows. The outbox solves atomicity; consumers still need idempotency.</li>
+    </ul>
+  </div>
+
+  <h2>Mental Model</h2>
+  <p>Stop thinking "save, then announce". Think "save the announcement too". The order and its <code>order.created</code> event commit as one atom or not at all; a separate process — one that can crash and resume freely, because its position is just a WAL location — carries committed announcements to Kafka. There is no moment where state exists without its event, because they were never two writes.</p>
+
+  <div class="diagram-shell" style="grid-template-columns: 1fr;">
+    <div class="flow-diagram">
+      <div class="flow-row three">
+        <div class="flow-node bad"><strong>Dual write</strong><span>INSERT order; COMMIT; → crash → publish never happens</span></div>
+        <div class="flow-arrow">vs</div>
+        <div class="flow-node good"><strong>Outbox</strong><span>INSERT order + INSERT outbox; COMMIT — one atom</span></div>
+      </div>
+      <div class="flow-row three">
+        <div class="flow-node"><strong>WAL</strong><span>every committed transaction, in order</span></div>
+        <div class="flow-arrow">logical decoding →</div>
+        <div class="flow-node"><strong>Debezium → Kafka</strong><span>outbox inserts become events; slot tracks progress</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Ground-Up Explanation</h2>
+  <h3>Why retries cannot save the dual write</h3>
+  <p>The subtle part of the failure is that good engineering hides it. A crashed writer restarts and retries idempotently: "order exists? skip." The skip is correct for state and fatal for the event — the one order that committed without publishing is now permanently silent. The lab reproduces exactly this: the restarted run finishes the remaining 499 orders perfectly, and order 500's event is simply gone.</p>
+
+  <h3>What logical decoding provides</h3>
+  <p>PostgreSQL's WAL already records every committed change in commit order. With <code>wal_level=logical</code>, a replication slot lets an external reader consume those changes as structured rows rather than physical pages. Two properties make this the right transport: only <em>committed</em> transactions appear, and the slot guarantees the reader misses nothing — Postgres retains WAL until the slot confirms it (which is also the operational hazard: a dead slot grows disk usage without bound).</p>
+
+  <h3>The outbox table</h3>
+  <pre><code>CREATE TABLE outbox (
+    id             bigserial PRIMARY KEY,
+    aggregate_type text  NOT NULL,   -- 'order'
+    aggregate_id   text  NOT NULL,   -- becomes the Kafka message key
+    event_type     text  NOT NULL,   -- 'order.created'
+    payload        jsonb NOT NULL
+);</code></pre>
+  <p><code>aggregate_id</code> as the message key gives per-aggregate ordering in Kafka — all events for one order land on one partition, in commit order. Debezium's outbox event router SMT can route rows to per-aggregate topics and strip the envelope; the lab keeps the raw connector so the Debezium change format stays visible.</p>
+
+  <h2>Implementation Details</h2>
+  <ul>
+    <li>The lab's connector watches only <code>public.outbox</code> (<code>table.include.list</code>), uses the built-in <code>pgoutput</code> plugin, and disables converter schemas so messages are plain JSON with the row under <code>"after"</code>.</li>
+    <li>Delivery to Kafka is at-least-once: after a connector restart, rows since the last committed offset re-emit. Consumers dedupe on <code>aggregate_id</code> + event id — the idempotent-consumer pattern from the <a href="../delivery-semantics/overview.html">delivery-semantics page</a>.</li>
+    <li>The outbox grows forever unless trimmed. Common approach: delete rows after CDC confirms them, or even <code>DELETE</code> immediately after insert in the same transaction — Debezium reads the insert from the WAL regardless.</li>
+    <li>Alternatives and their trade-offs: polling the outbox table (simpler, adds latency and load), listen-to-yourself (service consumes its own topic to update state — inverts the problem), and 2PC (heavyweight, and Kafka does not participate in XA anyway).</li>
+  </ul>
+
+  <h2>Lab Evidence</h2>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/kafka/outbox"><code>labs/kafka/outbox</code></a>: Postgres with logical WAL, Kafka, Debezium Connect, and a Go writer that hard-crashes after committing order 500 and before publishing its event. The audit is set arithmetic: every <code>order_ref</code> in Postgres must appear in the event topic.</p>
+  <div class="run-grid">
+    <div class="run-card"><h3><code>make break</code></h3><p>Dual write + crash + idempotent restart. Audit finds order 500 has no event; exit 1.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>Outbox + identical crash. Debezium drains the outbox; audit matches every order; exit 0.</p></div>
+    <div class="run-card"><h3><code>make outbox-rows / status</code></h3><p>Inspect the outbox table and the connector's streaming state directly.</p></div>
+  </div>
+  <h3>Measured: the same crash, with and without the outbox</h3>
+  <pre><code>make break (dual write):
+  CRASH injected after committing ord-500, before publishing its event
+  audit(direct): orders in postgres=1000, events in order-events=999
+    orders with no event: 1 [ord-500]           → exit 1
+
+make test (outbox):
+  CRASH injected after committing ord-500
+  audit(cdc): orders in postgres=1000, events in shop.public.outbox=1000
+    orders with no event: 0                     → exit 0</code></pre>
+  <p>Real runs from 2026-07-07. The restarted dual-write run finished the remaining orders perfectly and still could not recover ord-500's event — the idempotent retry skips the committed order and never re-publishes. The outbox run took the identical crash and lost nothing.</p>
+
+  <h2>Production Notes</h2>
+  <ul>
+    <li>Monitor replication slot lag (<code>pg_replication_slots</code>): a stalled connector holds WAL and eventually fills the disk of the primary.</li>
+    <li>Schema-change discipline applies to the outbox table too; its shape is a public contract once consumers parse the payloads. A schema registry (Avro/Protobuf) replaces the lab's raw JSON in production.</li>
+    <li>Snapshots matter on first deploy: Debezium's initial snapshot emits existing rows; decide whether consumers should see history or only new events (<code>snapshot.mode</code>).</li>
+    <li>This pattern is the standard first step toward event-driven fintech systems: the keystone ledger project will emit transfer events through exactly this mechanism.</li>
+  </ul>
+
+  <h2>Code Pointers</h2>
+  <table>
+    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/cmd/outbox/main.go"><code>cmd/outbox/main.go</code></a></td><td><code>dualwrite</code> vs <code>outbox</code> differ by ~10 lines; the crash lands in the same place in both.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/outbox/scripts/connector.json"><code>scripts/connector.json</code></a></td><td>The whole Debezium configuration: eight meaningful lines.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/outbox/migrations/001_outbox.sql"><code>migrations/001_outbox.sql</code></a></td><td>The outbox table and why each column exists.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Further Reading &amp; Watching</h2>
+  <ul class="source-list">
+    <li><a href="https://microservices.io/patterns/data/transactional-outbox.html">Pattern: Transactional outbox</a> — Chris Richardson. The canonical statement of the pattern.</li>
+    <li><a href="https://debezium.io/blog/2019/02/19/reliable-microservices-data-exchange-with-the-outbox-pattern/">Reliable Microservices Data Exchange With the Outbox Pattern</a> — Gunnar Morling, Debezium.</li>
+    <li><a href="https://www.confluent.io/blog/using-logs-to-build-a-solid-data-infrastructure-or-why-dual-writes-are-a-bad-idea/">Using logs to build a solid data infrastructure (or: why dual writes are a bad idea)</a> — Martin Kleppmann. First-principles version of this whole page.</li>
+    <li><a href="https://www.decodable.co/blog/revisiting-the-outbox-pattern">Revisiting the Outbox Pattern</a> — Gunnar Morling, 2023; trade-offs and alternatives with a decade of hindsight.</li>
+    <li><a href="https://debezium.io/documentation/reference/stable/connectors/postgresql.html">Debezium docs: PostgreSQL connector</a> and <a href="https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html">Outbox Event Router</a>.</li>
+    <li><a href="https://www.postgresql.org/docs/current/logicaldecoding.html">PostgreSQL docs: Logical Decoding</a> — what a replication slot actually promises.</li>
+    <li>Book: Martin Kleppmann, <em>Designing Data-Intensive Applications</em>, ch. 11 — change data capture and event sourcing.</li>
+  </ul>
+</main>
+
+</body>
+</html>

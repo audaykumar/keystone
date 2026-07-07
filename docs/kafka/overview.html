@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kafka Internals | keystone</title>
+  <link rel="stylesheet" href="../assets/topic.css" />
+</head>
+<body>
+<div id="site-nav"></div>
+<script src="../components/nav.js?v=logo1"></script>
+
+<main>
+  <div class="crumbs"><a href="../index.html">keystone</a><span>/</span><span>Kafka internals</span></div>
+  <h1>Kafka Internals: Partitions, ISR, and What an Ack Promises</h1>
+  <p class="subtitle">Kafka is a replicated, partitioned commit log. Every guarantee it gives — and every one it quietly does not — follows from three mechanisms: partitions, leader-based replication with the ISR, and consumer group offsets.</p>
+
+  <h2>TLDR</h2>
+  <div class="callout">
+    <strong>Quick brief</strong>
+    <ul class="tldr-list">
+      <li><strong>Ordering is per partition, never per topic.</strong> Same key → same partition → ordered. Different keys can interleave arbitrarily.</li>
+      <li><strong>An ack means what you configured it to mean.</strong> <code>acks=1</code> is a leader-only promise: kill the leader before followers copy the message and the acked message is gone. <code>acks=all</code> + <code>min.insync.replicas=2</code> makes acked mean replicated.</li>
+      <li><strong>Consumers own their position.</strong> Brokers delete by retention, not by consumption; the committed offset is just a number in a topic, and where you commit it relative to processing decides your delivery semantics.</li>
+      <li><strong>Rebalances are the price of elastic consumers.</strong> Members joining or leaving redistributes partitions; flapping members redistribute them constantly.</li>
+    </ul>
+  </div>
+
+  <h2>Mental Model</h2>
+  <p>Picture a topic as a set of independent append-only journals (partitions). A producer picks a journal by hashing the message key and appends at the end. Each journal has one broker acting as leader — all reads and writes go through it — and followers that copy new entries. A consumer group is a team of readers that splits the journals among themselves, each keeping a bookmark (offset) of how far it has read.</p>
+  <p>Nothing is ever handed to consumers; they pull from their bookmark. Nothing is deleted on read; entries age out by retention. This is why Kafka can replay: the bookmark can be moved backwards, because consuming never destroys anything.</p>
+
+  <div class="diagram-shell" style="grid-template-columns: 1fr;">
+    <div class="flow-diagram">
+      <div class="flow-row three">
+        <div class="flow-node"><strong>Producer</strong><span>hash(key) → partition; batches, retries, acks setting</span></div>
+        <div class="flow-arrow">append →</div>
+        <div class="flow-node good"><strong>Partition leader</strong><span>one broker owns the log; followers fetch and copy</span></div>
+      </div>
+      <div class="flow-row three">
+        <div class="flow-node warn"><strong>ISR</strong><span>replicas fully caught up with the leader; shrinks when one lags or dies</span></div>
+        <div class="flow-arrow">pull ←</div>
+        <div class="flow-node"><strong>Consumer group</strong><span>partitions divided among members; each commits its offset</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Ground-Up Explanation</h2>
+  <h3>Partitions and keys</h3>
+  <p>A partition is the unit of parallelism, ordering, and placement. The producer's hash partitioner guarantees one thing: equal keys land in the same partition and are therefore mutually ordered. Choose keys accordingly — an account id as key means per-account ordering, which is usually exactly the invariant a ledger needs. It also means a hot account is a hot partition; keys shape load distribution.</p>
+
+  <h3>Replication and the ISR</h3>
+  <p>Each partition has a replication factor (say 3): one leader plus two followers fetching its log. The in-sync replica set (ISR) is the leader's list of replicas that are fully caught up. When a broker dies, the controller elects a new leader <em>from the ISR</em>, which is what makes a clean failover lossless — anything the old leader acked with <code>acks=all</code> exists on the new leader by definition.</p>
+  <p>Kafka's committed watermark (the "high watermark") is the offset every ISR member has replicated. Consumers only ever see messages below it, so a consumer can never read a message that a failover might later erase.</p>
+
+  <h3>The acks contract</h3>
+  <table>
+    <thead><tr><th>Setting</th><th>Ack means</th><th>Failure behavior</th></tr></thead>
+    <tbody>
+      <tr><td><code>acks=0</code></td><td>message left the producer</td><td>any hiccup loses messages silently</td></tr>
+      <tr><td><code>acks=1</code></td><td>leader wrote it locally</td><td>leader dies before followers copy → acked message lost in a clean election</td></tr>
+      <tr><td><code>acks=all</code> + <code>min.insync.replicas=2</code></td><td>the ISR quorum has it</td><td>no acked loss on single-broker failure; writes rejected if ISR shrinks below 2 — an explicit error instead of silent loss</td></tr>
+    </tbody>
+  </table>
+  <p>The last row states the real trade: <code>acks=all</code> converts data loss into visible unavailability. For payment events that is the correct direction to fail.</p>
+
+  <h3>Consumer groups, offsets, rebalances</h3>
+  <p>A group coordinator assigns each partition to exactly one member of a consumer group. Offsets are committed to the internal <code>__consumer_offsets</code> topic; on restart a member resumes from the last commit. When membership changes, the coordinator triggers a rebalance: partitions are revoked and reassigned. During a rebalance, affected partitions pause — a group that flaps (slow processing causing missed heartbeats, causing eviction, causing rejoin) spends its life rebalancing instead of consuming.</p>
+
+  <h2>Lab Evidence</h2>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/kafka/internals"><code>labs/kafka/internals</code></a>: a 3-broker KRaft cluster, a <code>payments</code> topic (6 partitions, RF 3, <code>min.insync.replicas=2</code>), and a Go driver producing sequence-numbered messages so loss and duplication are countable facts.</p>
+  <div class="run-grid">
+    <div class="run-card"><h3><code>make break</code></h3><p>acks=1 producer + <code>make kill</code> on a broker mid-run. The audit scans all partitions and exits 1 on missing sequences.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>acks=all under the same kill: failed sends are visible errors; audit finds every acked sequence.</p></div>
+    <div class="run-card"><h3><code>make consume</code> ×2</h3><p>Two group members: watch the coordinator split 6 partitions 3/3, then hand them back when one leaves.</p></div>
+  </div>
+  <h3>Measured: happy path and an uninvited lesson</h3>
+  <p>Verified on 2026-07-07: the 3-broker cluster forms, leaders spread across brokers, and a 600-message keyed produce audits clean (600 unique sequences, 0 duplicates, 0 missing). The audit's per-partition counts taught something the page did not plan to: 10 keys hashed onto 6 partitions gave two partitions 180 messages and the rest 60 — a 3x hot-partition skew from key cardinality alone.</p>
+  <pre><code>partition 0: 60   partition 1: 60   partition 2: 60
+partition 3: 60   partition 4: 180  partition 5: 180
+unique sequences found: 600, duplicates: 0, missing: 0 → exit 0</code></pre>
+  <p>The <code>make break</code> broker-kill loss window is scripted but not yet captured; its evidence will be added after a recorded run.</p>
+
+  <h2>Production Notes</h2>
+  <ul>
+    <li>Partition count is close to permanent: you can add partitions (breaking key→partition mapping for existing keys) but never remove them. Size for target throughput ÷ per-partition throughput, with headroom.</li>
+    <li>Enable the idempotent producer (<code>enable.idempotence=true</code>, default in modern clients): retries stop creating duplicates within a partition session.</li>
+    <li>Watch consumer lag as a first-class SLO; lag growth is the earliest signal of a slow consumer, a hot partition, or a rebalance storm.</li>
+    <li><code>unclean.leader.election.enable=false</code> (default) chooses unavailability over data loss when the ISR is empty. Turning it on is a data-loss decision, not a tuning knob.</li>
+  </ul>
+
+  <h2>Code Pointers</h2>
+  <table>
+    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/cmd/internals/main.go"><code>cmd/internals/main.go</code></a></td><td>Producer with configurable acks, group consumer with rebalance logging, and the partition-scanning audit.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/internals/compose.yaml"><code>internals/compose.yaml</code></a></td><td>A 3-broker KRaft cluster in ~70 lines: quorum voters, listeners, shared cluster id.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Further Reading &amp; Watching</h2>
+  <ul class="source-list">
+    <li><a href="https://kafka.apache.org/documentation/#design">Kafka documentation: Design</a> — replication, ISR, and delivery guarantees from the source; verify claims here against it.</li>
+    <li><a href="https://engineering.linkedin.com/distributed-systems/log-what-every-software-engineer-should-know-about-real-time-datas-unifying">The Log</a> — Jay Kreps. The essay that explains why Kafka is shaped the way it is.</li>
+    <li><a href="https://notes.stephenholiday.com/Kafka.pdf">Kafka: a Distributed Messaging System for Log Processing</a> — the original NetDB '11 paper.</li>
+    <li><a href="https://www.confluent.io/blog/hands-free-kafka-replication-a-lesson-in-operational-simplicity/">Hands-free Kafka Replication</a> — why ISR-based replication instead of majority quorums.</li>
+    <li><a href="https://jack-vanlightly.com/blog/2023/4/24/why-apache-kafka-doesnt-need-fsync-to-be-safe">Why Kafka doesn't need fsync to be safe</a> — Jack Vanlightly; recovery semantics in depth.</li>
+    <li><a href="https://developer.confluent.io/courses/apache-kafka/events/">Confluent: Apache Kafka 101</a> — free video course; the internals modules are the useful ones.</li>
+    <li><a href="https://developer.confluent.io/learn/kraft/">KRaft explained</a> — the metadata quorum that replaced ZooKeeper.</li>
+    <li>Book: Martin Kleppmann, <em>Designing Data-Intensive Applications</em>, ch. 5 (replication) and ch. 11 (stream processing).</li>
+    <li>Book: Gwen Shapira et al., <em>Kafka: The Definitive Guide</em>, 2nd ed. — free PDF via Confluent; ch. 6 covers reliability guarantees.</li>
+  </ul>
+</main>
+
+</body>
+</html>

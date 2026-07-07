@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zero-Downtime Migrations | keystone</title>
+  <link rel="stylesheet" href="../assets/topic.css" />
+</head>
+<body>
+<div id="site-nav"></div>
+<script src="../components/nav.js?v=logo1"></script>
+
+<main>
+  <div class="crumbs"><a href="overview.html">PostgreSQL</a><span>/</span><span>Zero-downtime migrations</span></div>
+  <h1>Zero-Downtime Migrations</h1>
+  <p class="subtitle">A schema migration is a deploy against shared mutable state. The danger is almost never the change itself; it is what the change locks, and who queues behind that lock while your traffic is live.</p>
+
+  <h2>TLDR</h2>
+  <div class="callout">
+    <strong>Quick brief</strong>
+    <ul class="tldr-list">
+      <li><strong>The killer is the queue:</strong> an <code>ALTER TABLE</code> waiting for its lock makes every query issued after it wait too. A millisecond catalog change becomes a 30-second outage because a reporting query was still running.</li>
+      <li><strong>Always set <code>lock_timeout</code>:</strong> a migration that gives up after one second and retries later is an inconvenience. A migration that waits indefinitely is an incident.</li>
+      <li><strong>Plain <code>CREATE INDEX</code> blocks writes</strong> for the whole build. <code>CONCURRENTLY</code> trades speed and transactional safety for keeping writes flowing.</li>
+      <li><strong>Big changes ship in small steps:</strong> expand (add nullable), backfill in batches, then contract (<code>CHECK ... NOT VALID</code> → <code>VALIDATE</code> → <code>SET NOT NULL</code>). No step holds a long exclusive lock.</li>
+    </ul>
+  </div>
+
+  <h2>Mental Model</h2>
+  <p>Every statement in PostgreSQL takes a lock on the tables it touches, and locks are granted strictly in arrival order. Think of each table as having a single queue at its door. A <code>SELECT</code> only needs the weakest ticket (ACCESS SHARE) and walks in alongside other readers and writers. <code>ALTER TABLE</code> needs the strongest ticket (ACCESS EXCLUSIVE): it must wait until everyone inside leaves, and while it stands in the doorway, <em>nobody else gets in</em> — not even readers who would normally coexist with everything.</p>
+  <p>That doorway picture explains the classic production failure. The migration is not slow. The migration is <em>polite</em>, and PostgreSQL's queue fairness turns its politeness into a blockade.</p>
+
+  <div class="diagram-shell" style="grid-template-columns: 1fr;">
+    <div class="flow-diagram">
+      <div class="flow-row three">
+        <div class="flow-node warn"><strong>Long reader</strong><span>report query, holds ACCESS SHARE on orders for 30s</span></div>
+        <div class="flow-arrow">blocks →</div>
+        <div class="flow-node bad"><strong>ALTER TABLE</strong><span>needs ACCESS EXCLUSIVE, waits in the queue</span></div>
+      </div>
+      <div class="flow-row three">
+        <div class="flow-node good"><strong>New SELECTs + INSERTs</strong><span>would not conflict with the reader at all</span></div>
+        <div class="flow-arrow">queue behind →</div>
+        <div class="flow-node bad"><strong>the waiting ALTER</strong><span>every query stalls; ops/sec drops to zero</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Ground-Up: What Locks What</h2>
+  <p>PostgreSQL has eight table-level lock modes, but three cover most migration reasoning:</p>
+  <table>
+    <thead><tr><th>Lock</th><th>Taken by</th><th>Conflicts with</th></tr></thead>
+    <tbody>
+      <tr><td><code>ACCESS SHARE</code></td><td>every <code>SELECT</code></td><td>only ACCESS EXCLUSIVE</td></tr>
+      <tr><td><code>SHARE</code></td><td>plain <code>CREATE INDEX</code></td><td>all writes (INSERT/UPDATE/DELETE)</td></tr>
+      <tr><td><code>ACCESS EXCLUSIVE</code></td><td>most <code>ALTER TABLE</code> forms, <code>DROP</code>, <code>TRUNCATE</code>, <code>VACUUM FULL</code></td><td>everything, including SELECT</td></tr>
+    </tbody>
+  </table>
+  <p>Two facts complete the model. First, locks are held until the transaction ends, not until the statement ends — a transaction that touched <code>orders</code> ten minutes ago still holds its ACCESS SHARE lock. Second, waiters are granted in order, and a waiting stronger lock blocks later weaker requests. That second fact is the lock-queue outage.</p>
+
+  <h2>Concept Deep Dive: The Three Failure Modes</h2>
+
+  <h3>1. The lock-queue outage</h3>
+  <p>The ALTER itself, adding a nullable column, is a catalog update that takes about a millisecond once the lock is granted. But it cannot be granted while any transaction, even an idle one, holds any lock on the table. While the ALTER waits, all new queries queue behind it. The fix is not to avoid the ALTER; it is to bound the wait:</p>
+  <pre><code>SET lock_timeout = '1s';
+ALTER TABLE orders ADD COLUMN note text;
+-- on failure: sleep, retry; each attempt costs at most ~1s of queueing</code></pre>
+  <p>With the timeout, the worst case shifts from "site down until the reporting query ends" to "p99 blips ~1s per attempt". The migration tool owns the retry loop.</p>
+
+  <h3>2. The blocking index build</h3>
+  <p>Plain <code>CREATE INDEX</code> holds SHARE for the full scan-and-build: reads continue, every write blocks. On a 300k-row table that is seconds; on a real table it is minutes to hours. <code>CREATE INDEX CONCURRENTLY</code> does two passes plus a wait for concurrent snapshots to finish, so writes keep flowing. Its costs are real: roughly twice the build time, it cannot run inside a transaction block, and if it fails it leaves an <code>INVALID</code> index you must drop and rebuild.</p>
+
+  <h3>3. The full-scan constraint</h3>
+  <p>A bare <code>ALTER TABLE ... ALTER COLUMN region SET NOT NULL</code> must scan the whole table to prove the invariant, under ACCESS EXCLUSIVE. The expand-contract sequence gets the same end state without a long exclusive hold:</p>
+  <pre><code>-- expand: catalog-only
+ALTER TABLE orders ADD COLUMN region text;
+
+-- backfill: batched, each batch its own transaction, pause between
+UPDATE orders SET region = ... WHERE id IN (SELECT id FROM orders WHERE region IS NULL LIMIT 5000);
+
+-- contract: instant, applies to new writes only
+ALTER TABLE orders ADD CONSTRAINT orders_region_not_null CHECK (region IS NOT NULL) NOT VALID;
+-- full scan, but under SHARE UPDATE EXCLUSIVE: reads and writes continue
+ALTER TABLE orders VALIDATE CONSTRAINT orders_region_not_null;
+-- PG12+: proven by the valid CHECK, so catalog-only
+ALTER TABLE orders ALTER COLUMN region SET NOT NULL;
+ALTER TABLE orders DROP CONSTRAINT orders_region_not_null;</code></pre>
+  <p>The same expand-contract shape covers column renames and type changes: add the new column, dual-write from the application, backfill, switch reads, drop the old column. Each deploy is individually boring, which is the point.</p>
+
+  <h2>Implementation Details</h2>
+  <ul>
+    <li><strong>Adding a column with a default</strong> is catalog-only since PostgreSQL 11 for constant defaults. A volatile default (<code>now()</code>, <code>gen_random_uuid()</code>) still rewrites the table.</li>
+    <li><strong><code>lock_timeout</code> vs <code>statement_timeout</code>:</strong> the first bounds waiting for a lock, the second bounds total statement runtime. Migrations want a short <code>lock_timeout</code> and a generous <code>statement_timeout</code>.</li>
+    <li><strong>Batched backfills commit per batch.</strong> One giant UPDATE holds row locks and bloats the table in one shot; batches with pauses let vacuum, replicas, and application traffic breathe.</li>
+    <li><strong>Idle-in-transaction sessions are silent blockers.</strong> An ORM connection that opened a transaction and went idle holds its locks indefinitely. <code>idle_in_transaction_session_timeout</code> is the guard.</li>
+    <li><strong>Watch the queue live:</strong> <code>pg_blocking_pids()</code> joined against <code>pg_stat_activity</code> shows exactly who blocks whom (the lab's <code>make locks</code>).</li>
+  </ul>
+
+  <h2>Lab Evidence</h2>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/postgres/migrations"><code>labs/postgres/migrations</code></a>: a 300k-row <code>orders</code> table, a Go load driver printing per-second p50/p99/max latency, and each failure mode as a Make target run against live traffic.</p>
+  <div class="run-grid">
+    <div class="run-card"><h3><code>make break</code></h3><p>30s reader + unguarded ALTER. The load terminal shows ops drop to zero for the full reader duration.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>Same scenario with <code>lock_timeout='1s'</code> + retry. Load shows ~1s p99 blips instead of a stall.</p></div>
+    <div class="run-card"><h3><code>make index-break / index-safe</code></h3><p>Plain index build stalls INSERTs; CONCURRENTLY keeps them flowing, measurably slower to finish.</p></div>
+  </div>
+  <h3>Measured: the same migration, two outcomes</h3>
+  <p>From a real run on 2026-07-07, load at ~900 ops/s. Without <code>lock_timeout</code>, the load driver recorded 27 consecutive seconds of zero completed queries while the ALTER waited behind a 30s reader:</p>
+  <pre><code>t=  8s ops=  611 errs=0 p50=6.9ms    p99=22.1ms   max=26.6ms
+t=  9s ops=0 errs=0  &lt;&lt; STALL: no query completed this second &gt;&gt;
+...                     (27 consecutive stall seconds)
+t= 36s ops=  303 errs=0 p50=7.3ms    p99=28.0328s max=28.0372s
+done. worst single-query latency or stall: 28.0372s</code></pre>
+  <p>With <code>SET lock_timeout = '1s'</code> and a retry loop (success on attempt 10), the worst any query saw in the entire run was 1.03s:</p>
+  <pre><code>t= 12s ops=  188 errs=0 p50=6.4ms    p99=1.0276s  max=1.0324s
+t= 16s ops=  948 errs=0 p50=6.1ms    p99=25.7ms   max=1.0343s
+done. worst single-query latency or stall: 1.0343s</code></pre>
+  <p>The batched backfill filled 329,081 rows in 66 committing batches (9.7s total); the NOT VALID → VALIDATE → SET NOT NULL contract step took 0.111s; <code>CREATE INDEX CONCURRENTLY</code> finished in 0.242s with no recorded write stall.</p>
+
+  <h2>Production Notes</h2>
+  <ul>
+    <li>Encode the rules in tooling, not memory: GitLab's migration helpers and <code>strong_migrations</code> exist because humans forget at 2am.</li>
+    <li>Deploys and migrations are separate events. The application must run correctly against both the old and the new schema, because they will coexist during rollout — and during rollback.</li>
+    <li>Replicas replay ACCESS EXCLUSIVE locks too: a long lock on the primary can stall read replicas or conflict with replica queries.</li>
+    <li>High-frequency tables need extra care: even a 1s lock_timeout retry loop on a payments table deserves an off-peak window.</li>
+  </ul>
+
+  <h2>Code Pointers</h2>
+  <table>
+    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/migrations/scripts/unsafe_alter.sql"><code>scripts/unsafe_alter.sql</code></a></td><td>The one-line ALTER that causes the outage — the danger is context, not content.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/migrations/scripts/validate_region.sql"><code>scripts/validate_region.sql</code></a></td><td>The full NOT VALID → VALIDATE → SET NOT NULL contract sequence.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/migrations/src/main.go"><code>src/main.go</code></a></td><td>Load generator with per-second percentiles, and the batched backfill loop.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Further Reading &amp; Watching</h2>
+  <ul class="source-list">
+    <li><a href="https://medium.com/paypal-tech/postgresql-at-scale-database-schema-changes-without-downtime-20d3749ed680">PostgreSQL at Scale: Database Schema Changes Without Downtime</a> — Braintree/PayPal. The operation-by-operation safety catalog; the single best reference on this topic.</li>
+    <li><a href="https://gocardless.com/blog/zero-downtime-postgres-migrations-the-hard-parts/">Zero-downtime Postgres migrations — the hard parts</a> — GoCardless, on discovering the lock-queue trap in production.</li>
+    <li><a href="https://docs.gitlab.com/ee/development/migration_style_guide.html">GitLab migration style guide</a> — production rules from one of the largest public Postgres installs.</li>
+    <li><a href="https://github.com/ankane/strong_migrations">strong_migrations</a> — the dangerous-operation checklist as a linter; the README is a reference in itself.</li>
+    <li><a href="https://www.citusdata.com/blog/2018/02/22/seven-tips-for-dealing-with-postgres-locks/">7 tips for dealing with Postgres locks</a> — Marco Slot, Citus.</li>
+    <li><a href="https://www.postgresql.org/docs/current/sql-altertable.html">PostgreSQL docs: ALTER TABLE</a> — the per-form lock levels; verify any claim here against this page.</li>
+    <li><a href="https://www.postgresql.org/docs/current/explicit-locking.html">PostgreSQL docs: Explicit Locking</a> — the full conflict matrix.</li>
+    <li>Book: Martin Kleppmann, <em>Designing Data-Intensive Applications</em>, ch. 4 (schema evolution) and ch. 7 (transactions and locking).</li>
+  </ul>
+</main>
+
+</body>
+</html>

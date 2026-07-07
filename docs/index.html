@@ -245,7 +245,7 @@
             <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">PostgreSQL indexes: deep dive</span></li>
             <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">PostgreSQL WAL for CDC</span></li>
             <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">PostgreSQL vacuum and locking</span></li>
-            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">PostgreSQL zero-downtime migrations</span></li>
+            <li class="sub-item"><div class="sub-dot done"></div><a href="postgres/migrations.html">PostgreSQL zero-downtime migrations: locks, queues, expand-contract</a></li>
             <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Storage engines: B-tree vs LSM-tree</span></li>
             <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Distributed storage: sharding, hot partitions, replica lag, failover</span></li>
           </ul>
@@ -274,16 +274,15 @@
 
       <!-- Messaging -->
       <li class="topic-item">
-        <div class="topic-status status-pending"></div>
+        <div class="topic-status status-wip"></div>
         <div class="topic-content">
-          <div class="topic-title pending">Messaging and Events <span class="badge badge-soon">coming</span></div>
+          <div class="topic-title">Messaging and Events <span class="badge badge-wip">in progress</span></div>
           <ul class="sub-list">
-            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Kafka: topics, partitions, consumer groups</span></li>
-            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Replication + ISR</span></li>
-            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Exactly-once semantics</span></li>
-            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Consumer rebalancing</span></li>
+            <li class="sub-item"><div class="sub-dot done"></div><a href="kafka/overview.html">Kafka internals: partitions, ISR, and what an ack promises</a></li>
+            <li class="sub-item"><div class="sub-dot done"></div><a href="delivery-semantics/overview.html">Delivery semantics: at-least-once, at-most-once, and idempotent consumers</a></li>
+            <li class="sub-item"><div class="sub-dot done"></div><a href="kafka/outbox.html">Outbox pattern + CDC: killing the dual-write gap</a></li>
+            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Consumer rebalancing: deep dive</span></li>
             <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">RabbitMQ, SQS, DLQs, ordering, and retries</span></li>
-            <li class="sub-item"><div class="sub-dot pending"></div><span class="coming">Outbox pattern, idempotent consumers, and replay</span></li>
           </ul>
         </div>
       </li>

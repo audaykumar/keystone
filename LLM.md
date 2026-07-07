@@ -176,6 +176,18 @@ The HTML pages are the durable teach-back and revision interface. They should ca
 - Add focused pages only when the deeper material exists.
 - Link new pages from `docs/index.html` and relevant existing pages.
 - Load `docs/components/nav.js` so return-to-index navigation remains visible.
+- Topic pages should read as learning notes, not as lab manuals. The page should teach the topic first; the lab exists as evidence that makes the concept concrete.
+- Preferred topic page order:
+  1. Topic title and one-sentence purpose.
+  2. TLDR or Quick Grasp with the most important details.
+  3. Mental model.
+  4. Ground-up explanation.
+  5. Concept deep dive.
+  6. Implementation details.
+  7. Lab evidence and real output.
+  8. Production notes.
+  9. Code pointers and further reading.
+- Avoid naming pages or index entries as "lab X" when the concept is the important part. Use topic-first labels such as "Rate limiting: fixed window vs sliding window"; the lab is the supporting exercise.
 
 ### Content
 
@@ -188,7 +200,18 @@ Include the parts that materially improve understanding:
 - Practical decision rules and trade-offs.
 - Diagrams or interactive flows when they clarify behavior.
 - Inline source links beside supported claims.
+- Real terminal output or screenshots when a lab is used as evidence. Do not invent representative output when the command can be run.
 - Curated resources for further reading or watching.
+
+### Redis Documentation Direction
+
+Redis pages should separate common command reference from topic explanations:
+
+- Add a shared `docs/redis/commands.html` page for Redis commands and Lua basics used across topics.
+- Topic pages should link to command anchors instead of repeating full command reference blocks.
+- Topic pages should still explain commands in context, for example why `ZREMRANGEBYSCORE` matters for a sliding-window limiter.
+- The current Redis topic pages to align to this model are caching, rate limiting, distributed locks, streams, and Pub/Sub.
+- Use real lab output screenshots for topic proof, but keep the page centered on the concept.
 
 Good sources include official documentation, engineering articles, papers, books with chapter references, conference talks, videos, and interactive visualizations. Official documentation verifies facts and version-sensitive behavior; it should not dictate the prose or page structure.
 
@@ -209,17 +232,43 @@ Completed documentation:
 
 - `docs/postgres/overview.html`: standalone PostgreSQL overview and request-flow visual
 - `docs/postgres/lost-update.html`: interactive warehouse-stock lost-update explainer for the concurrency lab
+- `docs/postgres/migrations.html`: zero-downtime migrations with measured lock-queue outage evidence
+- `docs/kafka/overview.html`: Kafka internals — partitions, ISR, acks contract, consumer groups
+- `docs/kafka/outbox.html`: transactional outbox + CDC with measured dual-write loss evidence
+- `docs/delivery-semantics/overview.html`: delivery semantics and idempotent consumers with measured balance evidence
 - `docs/redis/overview.html`: Redis internals, data structures, use cases, persistence, eviction, and Lua scripting overview
+- `docs/redis/labs/`: Redis topic pages for caching, rate limiting, locks, streams, and Pub/Sub. These need another pass so they read as topic-first learning notes instead of lab-first pages.
 - `docs/toolbox/overview.html`: systems-tool mental models, comparisons, workload selector, and clickable payment architecture
 - `docs/index.html`: backend engineering map with tracks for protocols, storage, distributed systems, messaging, reliability, security, observability, APIs, deployment, and runtime topics
 
-In-progress lab: `labs/postgres/concurrency/` reproduces a lost update while
-reserving warehouse stock and compares four modes (naive, locked, atomic,
-serializable). Schema
-migrations, seed, `compose.yaml`, `Makefile`, and the Go driver are built. `make up`
-is verified. All four modes have been run and measured, atomic oversubscription
-stops exactly at zero stock, and complete teardown is verified. See
-`labs/postgres/concurrency/README.md` for results.
+All new topic pages share `docs/assets/topic.css` (copied from the Redis lab
+stylesheet) and end with a "Further Reading & Watching" references section —
+every lab README carries a matching References section.
+
+Completed labs (all verified end to end with real captured evidence, full
+teardown confirmed):
+
+- `labs/postgres/concurrency/`: lost update + four fix modes, measured; now
+  includes lock inspection (`make locks`, `make waits`) with captured
+  two-tier tuple/transactionid queue evidence.
+- `labs/postgres/migrations/`: zero-downtime migrations. Measured: 28.0s
+  lock-queue outage vs 1.03s worst-case with `lock_timeout`; batched
+  backfill; NOT VALID → VALIDATE → SET NOT NULL; CREATE INDEX CONCURRENTLY.
+- `labs/kafka/internals/`: 3-broker KRaft cluster, keyed produce, consumer
+  groups, sequence audit. Happy path measured (incl. a 3x hot-partition skew
+  from 10 keys on 6 partitions); the broker-kill acks=1 loss scenario is
+  scripted but not yet captured.
+- `labs/kafka/delivery/`: at-most-once/at-least-once/idempotent consumer
+  against a Postgres balance with injected crashes. All three outcomes
+  measured exactly (shortfall 100 / overshoot 10000 / exact).
+- `labs/kafka/outbox/`: dual-write gap vs transactional outbox with Debezium
+  CDC. Measured: dual write loses exactly the crashed order's event; outbox
+  loses nothing.
+- `labs/redis/cli/`: redis-cli drill scripts (cache, ratelimit, lock,
+  streams, pubsub, zset), all verified.
+
+Kafka labs share one Go module at `labs/kafka/` (`cmd/<lab>` binaries, one
+Dockerfile with an `ARG LAB`), mirroring the Redis labs layout.
 
 The toolbox architecture distinguishes synchronous requests, Kafka streams, queue delivery, workflows, storage writes, replication/CDC, and metrics. Components and connections expose compact popovers plus detailed explanations.
 
@@ -234,8 +283,16 @@ docs/       Durable HTML learning pages
 
 ## Next Session
 
-The warehouse concurrency lab is implemented, measured, documented, and cleanly
-torn down. Redis overview documentation is published. Continue with one of these:
+Phase 1 (Postgres) and Phase 2 (Kafka) labs are implemented, measured, and
+documented. Continue with one of these:
 
-1. Run locked PostgreSQL mode while inspecting `pg_locks` and `pg_stat_activity`, then add lock evidence to the README and HTML explainer.
-2. Build a no-application-code Redis CLI lab with Docker Compose, `redis-cli`, and command scripts for cache, rate limiting, locks, streams, Pub/Sub, and sorted sets.
+1. Start `projects/ledger/` — the Python multi-currency ledger, thin first
+   slice: accounts + single-currency transfer, Postgres, migrations, Docker
+   lifecycle contract. Pair with fintech topic F1 (money data correctness).
+2. Run and capture the `labs/kafka/internals` broker-kill acks=1 loss
+   scenario (`make break` + `make kill` + `make audit`) and add the evidence
+   to the README and `docs/kafka/overview.html`.
+3. Create `docs/redis/commands.html` as the shared Redis command and Lua
+   reference, then rewrite the Redis topic pages topic-first.
+4. Add lock evidence from `labs/postgres/concurrency/README.md` to the
+   `docs/postgres/lost-update.html` explainer.

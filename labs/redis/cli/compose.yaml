@@ -1,0 +1,15 @@
+name: redis-cli-lab
+
+services:
+  redis:
+    image: redis:8.0-alpine
+    ports:
+      - "${REDIS_PORT:-6382}:6379"
+    volumes:
+      - ./scripts:/scripts:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+    restart: unless-stopped

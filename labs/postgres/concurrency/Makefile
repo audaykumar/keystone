@@ -2,7 +2,7 @@ COMPOSE := docker compose
 PG_USER ?= lab
 PG_DB   ?= warehouse
 
-.PHONY: up down reset migrate seed build test break load serializable logs psql
+.PHONY: up down reset migrate seed build test break load serializable logs psql locks waits locks-watch
 
 up: ## Start postgres, run migrations and seed
 	$(COMPOSE) up -d --wait postgres
@@ -39,6 +39,17 @@ serializable: build ## Run with serializable isolation and bounded retries
 
 logs: ## Follow postgres logs
 	$(COMPOSE) logs -f postgres
+
+locks: ## Snapshot pg_locks + pg_stat_activity (run during make test)
+	@$(COMPOSE) exec -T postgres psql -U $(PG_USER) -d $(PG_DB) -f - < scripts/lock_inspect.sql
+
+waits: ## Show blocking chains: who waits on whom
+	@$(COMPOSE) exec -T postgres psql -U $(PG_USER) -d $(PG_DB) -f - < scripts/lock_waits.sql
+
+locks-watch: ## Poll blocking chains every 500ms while a run is active
+	@while true; do clear; date; \
+		$(COMPOSE) exec -T postgres psql -U $(PG_USER) -d $(PG_DB) -f - < scripts/lock_waits.sql; \
+		sleep 0.5; done
 
 psql: ## Open a psql shell
 	$(COMPOSE) exec postgres psql -U $(PG_USER) -d $(PG_DB)
