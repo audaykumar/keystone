@@ -1,0 +1,57 @@
+name: rabbitmq-lab
+
+# guest is restricted to loopback connections by default, which breaks AMQP
+# from another container; RABBITMQ_DEFAULT_USER/PASS create a real user
+# instead so producer/consumer can dial "rabbitmq:5672" directly.
+
+x-driver: &driver
+  build:
+    context: ./src
+  image: rabbitmq-lab-driver:local
+  profiles: ["tools"]
+  depends_on:
+    rabbitmq:
+      condition: service_healthy
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      RABBITMQ_DEFAULT_USER: lab
+      RABBITMQ_DEFAULT_PASS: lab
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  producer:
+    <<: *driver
+    environment:
+      ROLE: producer
+      RABBITMQ_URL: "amqp://lab:lab@rabbitmq:5672/"
+      MODE: "${MODE:-break}"
+      COUNT: "${COUNT:-30}"
+      POISON_AT: "${POISON_AT:-5}"
+
+  consumer:
+    <<: *driver
+    environment:
+      ROLE: consumer
+      RABBITMQ_URL: "amqp://lab:lab@rabbitmq:5672/"
+      MODE: "${MODE:-break}"
+      COUNT: "${COUNT:-30}"
+      POISON_AT: "${POISON_AT:-5}"
+      PREFETCH: "${PREFETCH:-5}"
+      MAX_ATTEMPTS: "${MAX_ATTEMPTS:-3}"
+      BREAK_CAP: "${BREAK_CAP:-20}"
+      PROCESS_MS: "${PROCESS_MS:-5}"
+
+volumes:
+  rabbitmq-data:
