@@ -11,6 +11,7 @@
       .label { font-size: 18px; font-weight: 700; }
       .small { font-size: 15px; }
       .tiny { font-size: 13px; }
+      .center { text-anchor: middle; }
       .muted { fill: #9ba7b4; }
       .box { fill: #161b22; stroke: #30363d; stroke-width: 2; rx: 12; }
       .blue { fill: #142236; stroke: #58a6ff; }
@@ -26,12 +27,12 @@
   <text class="muted small" x="44" y="84">Signature proves body integrity. Timestamp and nonce make the signed request fresh.</text>
 
   <rect class="box blue" x="54" y="185" width="180" height="110"/>
-  <text class="label" x="104" y="224">Provider</text>
-  <text class="muted small" x="82" y="252">knows shared secret</text>
+  <text class="label center" x="144" y="224">Provider</text>
+  <text class="muted small center" x="144" y="252">knows shared secret</text>
   <path class="line" d="M234 240 H318"/>
 
   <rect class="box yellow" x="318" y="144" width="250" height="190"/>
-  <text class="label" x="354" y="180">Signed input</text>
+  <text class="label center" x="443" y="180">Signed input</text>
   <text class="tiny" x="350" y="216">timestamp</text>
   <text class="tiny" x="350" y="246">nonce</text>
   <text class="tiny" x="350" y="276">raw request body</text>
@@ -39,33 +40,34 @@
   <path class="line" d="M568 240 H650"/>
 
   <rect class="box blue" x="650" y="168" width="220" height="145"/>
-  <text class="label" x="704" y="205">HTTP request</text>
-  <text class="muted tiny" x="682" y="236">X-Webhook-Timestamp</text>
-  <text class="muted tiny" x="682" y="260">X-Webhook-Nonce</text>
-  <text class="muted tiny" x="682" y="284">X-Webhook-Signature</text>
+  <text class="label center" x="760" y="205">HTTP request</text>
+  <text class="muted tiny center" x="760" y="236">X-Webhook-Timestamp</text>
+  <text class="muted tiny center" x="760" y="260">X-Webhook-Nonce</text>
+  <text class="muted tiny center" x="760" y="284">X-Webhook-Signature</text>
   <path class="line" d="M870 240 H950"/>
 
   <rect class="box green" x="950" y="185" width="130" height="110"/>
-  <text class="label" x="986" y="224">Receiver</text>
-  <text class="muted tiny" x="982" y="252">verify before trust</text>
+  <text class="label center" x="1015" y="224">Receiver</text>
+  <text class="muted tiny center" x="1015" y="252">verify before trust</text>
 
   <rect class="gate" x="120" y="410" width="880" height="150"/>
   <text class="label" x="154" y="448">Receiver checks</text>
 
   <rect class="box green" x="170" y="480" width="170" height="58"/>
-  <text class="small" x="202" y="515">constant-time HMAC</text>
+  <text class="small center" x="255" y="503">constant-time</text>
+  <text class="small center" x="255" y="522">HMAC</text>
   <path class="line" d="M340 509 H410"/>
 
   <rect class="box green" x="410" y="480" width="170" height="58"/>
-  <text class="small" x="442" y="515">timestamp window</text>
+  <text class="small center" x="495" y="515">timestamp window</text>
   <path class="line" d="M580 509 H650"/>
 
   <rect class="box green" x="650" y="480" width="160" height="58"/>
-  <text class="small" x="684" y="515">nonce cache</text>
+  <text class="small center" x="730" y="515">nonce cache</text>
   <path class="line" d="M810 509 H880"/>
 
   <rect class="box green" x="880" y="480" width="90" height="58"/>
-  <text class="small" x="906" y="515">process</text>
+  <text class="small center" x="925" y="515">process</text>
 
   <rect class="box red" x="150" y="585" width="795" height="42"/>
   <text class="small" x="180" y="612">Reject: bad signature, stale timestamp, or nonce already seen.</text>
