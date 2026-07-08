@@ -238,6 +238,7 @@ Completed documentation:
 - `docs/kafka/outbox.html`: transactional outbox + CDC with measured dual-write loss evidence
 - `docs/delivery-semantics/overview.html`: delivery semantics and idempotent consumers with measured balance evidence
 - `docs/messaging/rabbitmq.html`: RabbitMQ acks, dead-letter exchanges, poison-message redelivery, prefetch, and queue/log/SQS contrasts with measured DLQ evidence
+- `docs/reliability/circuit-breaker.html`: circuit breakers, bulkheads, load shedding, and measured cascade-isolation evidence
 - `docs/redis/overview.html`: Redis internals, data structures, use cases, persistence, eviction, and Lua scripting overview
 - `docs/redis/labs/`: Redis topic pages for caching, rate limiting, locks, streams, and Pub/Sub. These need another pass so they read as topic-first learning notes instead of lab-first pages.
 - `docs/security/webhook-hmac.html`: webhook HMAC signatures, timestamp tolerance, nonce replay protection, and raw-body verification.
@@ -285,6 +286,11 @@ teardown confirmed):
   Measured: no DLQ + prefetch=1 leaves 26 messages stuck in `work.queue`
   after 20 capped redeliveries; DLX + 3-attempt guard drains `work.queue` to 0
   and parks exactly 1 poison message in `work.dlq`.
+- `labs/reliability/circuit-breaker/`: real HTTP chain (load -> api ->
+  backend-a/backend-b), per-downstream circuit breaker, bulkhead, and load
+  shedding. Measured: unprotected shared pool collapses healthy A to 19.9%
+  success / p99 3.002s; protected breaker + bulkhead + shedding keeps A at
+  100% / p99 9ms while B fast-fails through its own breaker.
 
 Kafka labs share one Go module at `labs/kafka/` (`cmd/<lab>` binaries, one
 Dockerfile with an `ARG LAB`), mirroring the Redis labs layout.
@@ -307,11 +313,10 @@ docs/       Durable HTML learning pages
 
 ## Next Session
 
-Phase 1 (Postgres), Phase 2 (Kafka), the first Reliability lab (retry storm),
-and the RabbitMQ DLQ/redelivery lab are implemented, measured, and documented.
-Reliability track next: circuit breakers / bulkheads / load shedding, which can
-reuse the retry-storm compose chain. Messaging next: SQS visibility timeout,
-FIFO vs standard queues, and redrive policies. Or continue with:
+Phase 1 (Postgres), Phase 2 (Kafka), the first two Reliability labs (retry
+storm, circuit breaker/bulkhead/load shedding), and the RabbitMQ DLQ/redelivery
+lab are implemented, measured, and documented. Messaging next: SQS visibility
+timeout, FIFO vs standard queues, and redrive policies. Or continue with:
 
 1. Start `projects/ledger/`: the Python multi-currency ledger, thin first
    slice: accounts + single-currency transfer, Postgres, migrations, Docker

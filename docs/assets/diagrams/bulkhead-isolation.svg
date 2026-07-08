@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 620" role="img" aria-labelledby="title desc">
+  <title id="title">Bulkhead isolation: a shared capacity pool versus per-dependency pools</title>
+  <desc id="desc">Left panel: a healthy dependency A and a slow dependency B draw from one shared capacity pool, so B's stuck calls consume A's slots too and A's calls back up. Right panel: A and B each have their own bounded pool, so B's slow calls only exhaust B's pool and A keeps flowing.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ba7b4"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #e6edf3; }
+      .muted { fill: #9ba7b4; }
+      .small { font-size: 15px; }
+      .label { font-size: 18px; font-weight: 700; }
+      .title { font-size: 28px; font-weight: 750; }
+      .panel { font-size: 16px; font-weight: 700; }
+      .box { fill: #161b22; stroke: #30363d; stroke-width: 2; }
+      .good { fill: #14251d; stroke: #56d364; stroke-width: 2; }
+      .bad { fill: #2d1b1e; stroke: #ff7b72; stroke-width: 2; }
+      .slotFull { fill: #ff7b72; }
+      .slotFree { fill: #30363d; }
+      .slotFreeGood { fill: #56d364; }
+      .edge { stroke: #9ba7b4; stroke-width: 2; marker-end: url(#arrow); fill: none; }
+      .edgeBad { stroke: #ff7b72; stroke-width: 2.5; marker-end: url(#arrow); fill: none; }
+      .edgeGood { stroke: #56d364; stroke-width: 2.5; marker-end: url(#arrow); fill: none; }
+    </style>
+  </defs>
+  <rect width="1100" height="620" fill="#0d1117"/>
+  <text class="title" x="44" y="54">Bulkhead isolation: one pool versus one pool per dependency</text>
+  <text class="muted small" x="44" y="84">Same total capacity either way. Splitting it is the only difference between A collapsing with B and A staying healthy.</text>
+
+  <!-- ============ LEFT PANEL: shared pool ============ -->
+  <text class="panel" x="44" y="128" fill="#ff7b72">Without a bulkhead: one shared pool</text>
+
+  <rect class="box" x="30" y="150" width="90" height="50" rx="10"/>
+  <text class="small" x="52" y="180">caller A</text>
+  <rect class="box" x="30" y="230" width="90" height="50" rx="10"/>
+  <text class="small" x="52" y="260">caller B</text>
+
+  <path class="edge" d="M 120 175 L 200 190"/>
+  <path class="edgeBad" d="M 120 255 L 200 210"/>
+
+  <!-- shared pool: 8 slots, mostly held by B -->
+  <rect class="bad" x="200" y="150" width="300" height="130" rx="14"/>
+  <text class="small muted" x="216" y="172">shared capacity pool</text>
+  <g>
+    <rect class="slotFull" x="216" y="186" width="30" height="22" rx="4"/>
+    <rect class="slotFull" x="252" y="186" width="30" height="22" rx="4"/>
+    <rect class="slotFull" x="288" y="186" width="30" height="22" rx="4"/>
+    <rect class="slotFull" x="324" y="186" width="30" height="22" rx="4"/>
+    <rect class="slotFull" x="360" y="186" width="30" height="22" rx="4"/>
+    <rect class="slotFull" x="396" y="186" width="30" height="22" rx="4"/>
+    <rect class="slotFull" x="432" y="186" width="30" height="22" rx="4"/>
+    <rect class="slotFree" x="468" y="186" width="16" height="22" rx="4"/>
+  </g>
+  <text class="small" x="216" y="234" fill="#ff7b72">7/8 slots held by B's stuck calls</text>
+  <text class="small muted" x="216" y="256">A must wait for a slot B is sitting on</text>
+
+  <rect class="box" x="560" y="150" width="120" height="50" rx="10"/>
+  <text class="small" x="576" y="180">backend A</text>
+  <text class="small muted" x="576" y="198">healthy, fast</text>
+  <rect class="bad" x="560" y="230" width="120" height="50" rx="10"/>
+  <text class="small" x="576" y="260">backend B</text>
+  <text class="small muted" x="576" y="278">slow, failing</text>
+
+  <path class="edge" d="M 500 190 L 558 175"/>
+  <path class="edgeBad" d="M 500 210 L 558 250"/>
+
+  <rect class="bad" x="740" y="150" width="320" height="130" rx="14"/>
+  <text class="label" x="756" y="182" fill="#ff7b72">A queues behind B</text>
+  <text class="small muted" x="756" y="208">A's requests wait on slots B is</text>
+  <text class="small muted" x="756" y="228">occupying, even though backend A</text>
+  <text class="small muted" x="756" y="248">never slowed down.</text>
+  <text class="small" x="756" y="270" fill="#ff7b72">A's success% and p99 crater too.</text>
+
+  <!-- ============ RIGHT PANEL: split pools ============ -->
+  <text class="panel" x="44" y="340" fill="#56d364">With a bulkhead: one pool per dependency</text>
+
+  <rect class="box" x="30" y="362" width="90" height="50" rx="10"/>
+  <text class="small" x="52" y="392">caller A</text>
+  <rect class="box" x="30" y="442" width="90" height="50" rx="10"/>
+  <text class="small" x="52" y="472">caller B</text>
+
+  <path class="edgeGood" d="M 120 387 L 200 387"/>
+  <path class="edgeBad" d="M 120 467 L 200 467"/>
+
+  <!-- A's own pool: mostly free -->
+  <rect class="good" x="200" y="362" width="260" height="50" rx="12"/>
+  <text class="small muted" x="212" y="380">A's pool</text>
+  <g>
+    <rect class="slotFreeGood" x="212" y="386" width="22" height="18" rx="3"/>
+    <rect class="slotFreeGood" x="240" y="386" width="22" height="18" rx="3"/>
+    <rect class="slotFreeGood" x="268" y="386" width="22" height="18" rx="3"/>
+    <rect class="slotFreeGood" x="296" y="386" width="22" height="18" rx="3"/>
+    <rect class="slotFree" x="324" y="386" width="22" height="18" rx="3"/>
+    <rect class="slotFree" x="352" y="386" width="22" height="18" rx="3"/>
+    <rect class="slotFree" x="380" y="386" width="22" height="18" rx="3"/>
+    <rect class="slotFree" x="408" y="386" width="22" height="18" rx="3"/>
+  </g>
+
+  <!-- B's own pool: full, but it's only B's problem -->
+  <rect class="bad" x="200" y="442" width="260" height="50" rx="12"/>
+  <text class="small muted" x="212" y="460">B's pool</text>
+  <g>
+    <rect class="slotFull" x="212" y="466" width="22" height="18" rx="3"/>
+    <rect class="slotFull" x="240" y="466" width="22" height="18" rx="3"/>
+    <rect class="slotFull" x="268" y="466" width="22" height="18" rx="3"/>
+    <rect class="slotFull" x="296" y="466" width="22" height="18" rx="3"/>
+    <rect class="slotFull" x="324" y="466" width="22" height="18" rx="3"/>
+    <rect class="slotFull" x="352" y="466" width="22" height="18" rx="3"/>
+    <rect class="slotFull" x="380" y="466" width="22" height="18" rx="3"/>
+    <rect class="slotFull" x="408" y="466" width="22" height="18" rx="3"/>
+  </g>
+
+  <rect class="good" x="560" y="362" width="120" height="50" rx="10"/>
+  <text class="small" x="576" y="392">backend A</text>
+  <rect class="bad" x="560" y="442" width="120" height="50" rx="10"/>
+  <text class="small" x="576" y="472">backend B</text>
+
+  <path class="edgeGood" d="M 460 387 L 558 387"/>
+  <path class="edgeBad" d="M 460 467 L 558 467"/>
+
+  <rect class="good" x="740" y="362" width="320" height="130" rx="14"/>
+  <text class="label" x="756" y="394" fill="#56d364">A is unaffected</text>
+  <text class="small muted" x="756" y="420">B's pool fills and its own calls</text>
+  <text class="small muted" x="756" y="440">shed or wait, but there is no slot</text>
+  <text class="small muted" x="756" y="460">for B to take from A's pool.</text>
+  <text class="small" x="756" y="482" fill="#56d364">A's success% and p99 stay flat.</text>
+
+  <text class="muted small" x="44" y="580">Same total slots in both panels. A bulkhead does not add capacity, it decides who a slow dependency is allowed to hurt.</text>
+</svg>

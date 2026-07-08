@@ -5,4 +5,5 @@ graphify-out/
 labs/**/src/pgmig
 .DS_Store
 labs/reliability/retry-storm/src/retrystorm
+labs/reliability/circuit-breaker/src/cbreaker
 labs/messaging/rabbitmq/src/rmqlab

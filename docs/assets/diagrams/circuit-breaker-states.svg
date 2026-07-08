@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 620" role="img" aria-labelledby="title desc">
+  <title id="title">The circuit breaker state machine: closed, open, half-open</title>
+  <desc id="desc">Closed calls pass through and count consecutive failures. A threshold of failures trips the breaker open, where every call fails fast. After a cooldown, one half-open probe is allowed through; success closes the breaker again, failure reopens it.</desc>
+  <defs>
+    <marker id="arrowBad" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ff7b72"/>
+    </marker>
+    <marker id="arrowWarn" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#e3b341"/>
+    </marker>
+    <marker id="arrowGood" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#56d364"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #e6edf3; }
+      .muted { fill: #9ba7b4; }
+      .small { font-size: 15px; }
+      .label { font-size: 18px; font-weight: 700; }
+      .title { font-size: 28px; font-weight: 750; }
+      .good { fill: #14251d; stroke: #56d364; stroke-width: 2; }
+      .warn { fill: #2a2416; stroke: #e3b341; stroke-width: 2; }
+      .bad { fill: #2d1b1e; stroke: #ff7b72; stroke-width: 2; }
+      .tripEdge { stroke: #ff7b72; stroke-width: 3; marker-end: url(#arrowBad); fill: none; }
+      .cooldownEdge { stroke: #e3b341; stroke-width: 3; marker-end: url(#arrowWarn); fill: none; }
+      .closeEdge { stroke: #56d364; stroke-width: 3; marker-end: url(#arrowGood); fill: none; }
+      .reopenEdge { stroke: #ff7b72; stroke-width: 2.5; stroke-dasharray: 7 6; marker-end: url(#arrowBad); fill: none; }
+    </style>
+  </defs>
+  <rect width="1100" height="620" fill="#0d1117"/>
+  <text class="title" x="44" y="54">Circuit breaker: closed &#8594; open &#8594; half-open</text>
+  <text class="muted small" x="44" y="84">Failures accumulate a streak in closed. The streak trips the breaker open. Only a cooldown earns the right to try again, one call at a time.</text>
+
+  <!-- CLOSED -->
+  <rect class="good" x="60" y="160" width="280" height="120" rx="14"/>
+  <text class="label" x="150" y="212">CLOSED</text>
+  <text class="small muted" x="90" y="240">calls pass through</text>
+  <text class="small muted" x="90" y="260">failures accumulate a streak</text>
+
+  <!-- OPEN -->
+  <rect class="bad" x="760" y="160" width="280" height="120" rx="14"/>
+  <text class="label" x="866" y="212">OPEN</text>
+  <text class="small muted" x="790" y="240">every call fails fast</text>
+  <text class="small muted" x="790" y="260">no downstream call attempted</text>
+
+  <!-- HALF-OPEN -->
+  <rect class="warn" x="410" y="430" width="280" height="120" rx="14"/>
+  <text class="label" x="450" y="482">HALF-OPEN</text>
+  <text class="small muted" x="440" y="510">exactly one probe allowed</text>
+  <text class="small muted" x="440" y="530">every other call still sheds</text>
+
+  <!-- CLOSED -> OPEN : trip -->
+  <path class="tripEdge" d="M 340 210 L 758 210"/>
+  <text class="small" x="440" y="196">N consecutive failures</text>
+  <text class="small" x="470" y="230" fill="#ff7b72">TRIP</text>
+
+  <!-- OPEN -> HALF-OPEN : cooldown elapses -->
+  <path class="cooldownEdge" d="M 800 280 C 720 380, 640 400, 600 428"/>
+  <text class="small" x="700" y="360">cooldown elapses</text>
+  <text class="small" x="700" y="380" fill="#e3b341">let one probe through</text>
+
+  <!-- HALF-OPEN -> CLOSED : probe succeeds -->
+  <path class="closeEdge" d="M 470 430 C 380 370, 280 330, 232 282"/>
+  <text class="small" x="230" y="380">probe succeeds</text>
+  <text class="small" x="230" y="400" fill="#56d364">reset streak, close</text>
+
+  <!-- HALF-OPEN -> OPEN : probe fails, dashed reopen -->
+  <path class="reopenEdge" d="M 660 430 C 760 360, 850 320, 890 282"/>
+  <text class="small" x="860" y="300">probe fails</text>
+  <text class="small" x="810" y="320" fill="#ff7b72">reopen, restart cooldown</text>
+
+  <text class="muted small" x="44" y="570">A trip stops sending calls the instant the streak crosses the threshold.</text>
+  <text class="muted small" x="44" y="592">The cooldown is the only way back in, and it costs exactly one call to find out.</text>
+</svg>

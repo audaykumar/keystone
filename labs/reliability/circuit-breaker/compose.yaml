@@ -1,0 +1,73 @@
+name: circuit-breaker
+
+# The breaker/bulkhead/shed policy is driven entirely by environment variables
+# so the "break" and "test" scenarios are the same image with different
+# overrides. The Makefile sets these per target and force-recreates all three
+# chain services (backend-a, backend-b, api) in one command, per the
+# correctness note below.
+
+x-driver: &driver
+  build:
+    context: ./src
+  image: circuit-breaker-driver:local
+
+services:
+  backend-a:
+    <<: *driver
+    environment:
+      ROLE: backend
+      LATENCY_MS: "5"
+      CAPACITY: "220"
+      DEGRADED_CAPACITY: "90"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/stats"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  backend-b:
+    <<: *driver
+    environment:
+      ROLE: backend
+      LATENCY_MS: "5"
+      CAPACITY: "220"
+      DEGRADED_CAPACITY: "90"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/stats"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  api:
+    <<: *driver
+    environment:
+      ROLE: api
+      DOWNSTREAM_A: "http://backend-a:8080"
+      DOWNSTREAM_B: "http://backend-b:8080"
+      BREAKER: "${BREAKER:-on}"
+      BULKHEAD: "${BULKHEAD:-on}"
+      SHED: "${SHED:-on}"
+      BREAKER_THRESHOLD: "${BREAKER_THRESHOLD:-5}"
+      BREAKER_COOLDOWN_MS: "${BREAKER_COOLDOWN_MS:-2000}"
+      BULKHEAD_SIZE: "${BULKHEAD_SIZE:-20}"
+      ATTEMPT_TIMEOUT_MS: "${ATTEMPT_TIMEOUT_MS:-800}"
+    depends_on:
+      backend-a:
+        condition: service_healthy
+      backend-b:
+        condition: service_healthy
+
+  load:
+    <<: *driver
+    profiles: ["tools"]
+    environment:
+      ROLE: load
+      TARGET: "http://api:8080"
+      BACKEND_B: "http://backend-b:8080"
+      RATE_A: "${RATE_A:-60}"
+      RATE_B: "${RATE_B:-200}"
+      DURATION_S: "${DURATION_S:-20}"
+      LABEL: "${LABEL:-run}"
+    depends_on:
+      api:
+        condition: service_started

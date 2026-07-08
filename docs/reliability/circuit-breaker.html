@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Circuit Breakers, Bulkheads &amp; Load Shedding | keystone</title>
+  <link rel="stylesheet" href="../assets/topic.css" />
+  <link rel="stylesheet" href="../assets/diagrams.css" />
+</head>
+<body>
+<div id="site-nav"></div>
+<script src="../components/nav.js?v=logo1"></script>
+
+<main>
+  <div class="crumbs"><a href="../index.html">keystone</a><span>/</span><span>Circuit breakers, bulkheads &amp; load shedding</span></div>
+  <h1>Circuit Breakers, Bulkheads, and Load Shedding</h1>
+  <p class="subtitle">A slow or failing dependency should cost you exactly what it costs, nothing more. These three mechanisms stop one unhealthy call from spending capacity that unrelated, healthy calls needed.</p>
+
+  <h2>TLDR</h2>
+  <div class="callout">
+    <strong>Quick brief</strong>
+    <ul class="tldr-list">
+      <li><strong>A circuit breaker stops sending calls</strong> to a dependency that is already failing, instead of letting every caller discover that the hard way.</li>
+      <li><strong>A bulkhead limits the blast radius</strong> of a dependency that is still being called: a bounded, per-dependency capacity pool so one slow dependency cannot consume the capacity another one needs.</li>
+      <li><strong>Load shedding is what makes both useful:</strong> rejecting immediately when a breaker is open or a pool is full, rather than queueing work that has nowhere to go.</li>
+      <li><strong>They answer different questions:</strong> should we call this dependency at all (breaker), how much of our capacity can it use if we do (bulkhead), and what do we do with the caller while we decide (shedding).</li>
+    </ul>
+  </div>
+
+  <h2>Mental Model</h2>
+  <p>An electrical circuit breaker trips to protect the house wiring, not the appliance that caused the surge. It does not try to fix the short; it just stops current from flowing until someone resets it. A software circuit breaker does the same job for a call to a dependency: once that dependency looks broken, the breaker stops sending it traffic, protecting the caller's own resources rather than trying to save the callee.</p>
+  <p>A breaker has three states. <strong>Closed</strong> is normal: calls pass through and the breaker is watching for failures. Enough consecutive failures <strong>trip</strong> it <strong>open</strong>: every call fails immediately, without even attempting the dependency. After a cool-off, the breaker allows exactly one <strong>half-open</strong> probe through to test whether the dependency has recovered; success closes it again, failure reopens it and restarts the clock.</p>
+
+  <figure class="terminal-shot">
+    <img src="../assets/diagrams/circuit-breaker-states.svg" alt="A state machine with three states: closed, where calls pass through and failures accumulate a streak; open, where every call fails fast after the streak trips the breaker; and half-open, where exactly one probe is allowed through after a cooldown, closing the breaker on success or reopening it on failure." />
+  </figure>
+
+  <h2>Ground-Up Explanation</h2>
+  <h3>Why fail fast beats piling on</h3>
+  <p>When a dependency is overloaded or down, every caller that still tries to reach it pays the cost of finding out: a connection attempt, a timeout, a thread or goroutine tied up waiting. None of that helps the dependency recover, and all of it is capacity the caller cannot spend on requests that could actually succeed. Failing fast, refusing the call before it is even attempted, is strictly better once you are confident the dependency is unhealthy: it returns control to the caller immediately and stops contributing to the dependency's own overload.</p>
+  <h3>The cascade mechanism</h3>
+  <p>The dangerous case is not a request that fails. It is a request that fails <em>slowly</em>, and does so while holding a limited resource, a connection, a thread, a queue slot, that a healthy, unrelated request also needed. If a caller has one shared pool of capacity for all of its downstream calls, and one of those downstreams starts responding slowly, the slow downstream's calls sit in that shared pool for as long as they take to fail. Every slot they occupy is a slot a call to a perfectly healthy dependency cannot use. The healthy dependency did nothing wrong; it is being starved by proximity, sharing a resource with something that broke.</p>
+  <p>This is how a single degraded dependency turns into a full outage: not because the failure spreads through any code path, but because capacity is shared and one consumer of that capacity stopped giving it back quickly.</p>
+
+  <h2>Concept Deep Dive</h2>
+  <h3>Thresholds and cool-off</h3>
+  <p>A breaker's threshold, how many consecutive failures trip it, trades false positives against reaction time. Too low, and a brief blip trips the breaker unnecessarily, shedding traffic a healthier retry could have served. Too high, and the breaker waits through a long run of real failures before it starts protecting anyone. The cool-off period has a matching trade-off: too short and the breaker reopens instantly against a dependency that has not actually recovered; too long and it keeps shedding traffic after the dependency is fine again. Neither number has a universally correct value; both should be set from the dependency's real failure and recovery timescales, not copied from an example.</p>
+  <h3>Bulkhead isolation</h3>
+  <p>A bulkhead is a bounded concurrency pool scoped to one dependency. The name comes from ship design: a hull is divided into watertight compartments so that a breach in one does not sink the whole ship. The software version divides shared capacity, connections, threads, an in-flight request budget, into per-dependency compartments so that one dependency's failure mode cannot spend another's share. Splitting a pool does not create new capacity; a bulkhead trades total throughput headroom for a guarantee about which failures can affect which callers.</p>
+
+  <figure class="terminal-shot">
+    <img src="../assets/diagrams/bulkhead-isolation.svg" alt="Two panels. Without a bulkhead, a healthy dependency and a slow dependency share one capacity pool, so the slow dependency's stuck calls occupy slots the healthy one needs and both queue up. With a bulkhead, each dependency has its own bounded pool from the same total capacity, so the slow dependency's pool fills without affecting the healthy dependency at all." />
+  </figure>
+
+  <h3>Load shedding</h3>
+  <p>A breaker decides not to call a dependency; a bulkhead limits how many calls can be in flight to it. Neither one, on its own, decides what happens to a caller that arrives once the breaker is open or the pool is full. <em>Load shedding</em> is that decision: reject immediately rather than queue. The alternative, blocking the caller until a slot frees or the breaker closes, feels gentler but is usually worse: it turns a resource limit into unbounded queueing latency, and an open-loop caller that would have simply retried or failed over now sits waiting for an answer that arrives too late to be useful, if it arrives at all. Shedding converts "eventually fails, expensively" into "fails immediately, cheaply," which is a strictly more useful signal to give a caller.</p>
+  <h3>Breaker versus retry budget</h3>
+  <p>A circuit breaker and a retry budget are both defenses against sending too much traffic to a struggling dependency, but they act at different granularities. A retry budget throttles smoothly: it caps retries as a fraction of traffic, so a dependency with an isolated, low failure rate still gets some retries while one failing broadly gets almost none. A breaker acts in discrete jumps: closed or open, all calls or none. Where retries make sense at all, a budget is often the gentler first line of defense; a breaker is the blunter tool for when you want an abrupt, unambiguous stop rather than a gradual throttle. They are not mutually exclusive; a breaker can sit in front of a retrying caller and stop the retries entirely once a dependency is clearly down.</p>
+  <h3>Where each belongs</h3>
+  <p>A breaker belongs at the point that decides whether to call a specific dependency at all: the client of that dependency, not further upstream. A bulkhead belongs anywhere multiple dependencies share a caller's resources, which is nearly everywhere a service has more than one downstream. Shedding belongs wherever either of the other two can produce a full-or-open condition: it is the answer to "now what," not a mechanism on its own.</p>
+
+  <h2>Implementation Details</h2>
+  <ul>
+    <li><strong>Track consecutive failures, not a rolling error rate,</strong> for the simplest correct breaker; a rate-based trigger adds a time window to reason about but reacts to sustained partial failure better.</li>
+    <li><strong>The half-open state must allow exactly one in-flight probe.</strong> Letting every caller probe simultaneously the instant the cooldown expires reproduces a thundering herd against a dependency that may still be fragile.</li>
+    <li><strong>Size a bulkhead from the caller's own capacity, not the dependency's.</strong> The pool exists to protect the caller; its size is "how much of my own capacity am I willing to risk on this dependency," not an estimate of the dependency's throughput.</li>
+    <li><strong>Shedding needs a cheap rejection path.</strong> If failing fast still means allocating a connection or doing meaningful work before saying no, it has not actually solved the problem it exists to solve.</li>
+    <li><strong>State must be shared across the instances handling one dependency,</strong> or scoped correctly if it is per-instance; a breaker that only one of ten instances knows is open protects one tenth of the traffic.</li>
+    <li><strong>Expose breaker and bulkhead state as metrics.</strong> An open breaker is exactly the kind of event that should page someone or show up on a dashboard, since it means a dependency is currently considered unusable.</li>
+  </ul>
+
+  <h2>Lab Evidence</h2>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/reliability/circuit-breaker"><code>labs/reliability/circuit-breaker</code></a>: a real HTTP chain <code>load &#8594; api &#8594; {backend-a, backend-b}</code>, where <code>backend-a</code> stays healthy and <code>backend-b</code> is pushed into a degraded, overloaded state. Open-loop load drives both independently and measures each one's own success rate and latency, plus the breaker's own state transitions.</p>
+  <div class="run-grid">
+    <div class="run-card"><h3><code>make break</code></h3><p>Unprotected: one shared capacity pool, no breaker, no shedding. Watch A's success% and p99 crater even though A itself never slows down.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>Protected: breaker + bulkhead + shedding. A stays fast and healthy while B's breaker trips and fast-fails.</p></div>
+    <div class="run-card"><h3>reported metrics</h3><p>Per backend: requests, success%, p50/p99, plus B's breaker state transitions and the share of calls it fast-failed.</p></div>
+  </div>
+  <h3>Measured: the same degraded dependency, isolated or not</h3>
+  <p>Real run on 2026-07-08. Backend A offered 60 req/s, backend B offered 200 req/s against a degraded capacity of 90 req/s and a 40% base failure rate, both for 20s; shared/split capacity pool of 20, breaker threshold 5 consecutive failures with a 2s cool-off:</p>
+  <pre><code>unprotected (cascade):
+  A (healthy):   requests=1200  succeeded=239  (19.9%)  p50=3s     p99=3.002s
+  B (degraded):  requests=3999  succeeded=378  (9.5%)   p50=3s     p99=3.002s
+  A breaker_state=closed  breaker_trips=0   (no breaker: never engaged)
+
+protected (isolated):
+  A (healthy):   requests=1200  succeeded=1200 (100.0%) p50=7ms    p99=9ms
+  B (degraded):  requests=3999  succeeded=227  (5.7%)   p50=1ms    p99=108ms
+  B breaker_state=open    breaker_trips=7   shed_breaker=3458 (86.5%)  shed_bulkhead=142</code></pre>
+  <p>Backend A never changed between the two runs. What changed is whether backend B's overload could reach it: unprotected, A's success collapses from healthy to 19.9% and its p99 is pinned at the caller's own timeout, purely from queueing behind B's stuck calls in a shared pool. Protected, A holds 100% success at single-digit-millisecond latency. B's own success rate is low in both runs, 9.5% versus 5.7%, because B genuinely is overloaded past what it can serve either way; what changes for B is that its breaker trips seven times and fast-fails 86.5% of its calls in about a millisecond, instead of queueing into a multi-second timeout that also drained A's capacity.</p>
+
+  <h2>Production Notes</h2>
+  <ul>
+    <li>A breaker protects the caller, not the callee. It is not a mitigation for the dependency's outage; it is a mitigation for yours.</li>
+    <li>Multiple independent instances of a caller need either shared breaker state or an accepted inconsistency window; a purely local breaker only ever sees its own instance's traffic and failure pattern.</li>
+    <li>Bulkhead sizing is a capacity-planning exercise, not a constant to set once. It should move when the caller's total capacity or the number of dependencies sharing it changes.</li>
+    <li>Test the cascade deliberately, with a real shared resource and a genuinely slow dependency. A breaker or bulkhead that has never been exercised against real contention is a config value, not a verified defense.</li>
+  </ul>
+
+  <h2>Code Pointers</h2>
+  <table>
+    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/reliability/circuit-breaker/src/main.go"><code>src/main.go</code></a></td><td>The breaker state machine, the per-downstream bulkhead pools, the shed-versus-queue branch, and the two independent open-loop load generators.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/reliability/circuit-breaker/Makefile"><code>Makefile</code></a></td><td>The unprotected and protected policies as environment overrides, plus single-knob targets isolating the breaker and the bulkhead.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Further Reading &amp; Watching</h2>
+  <ul class="source-list">
+    <li>Book: Michael Nygard, <em>Release It!</em> Circuit Breaker, Bulkhead, and Fail Fast as named stability patterns; the source of the vocabulary this page uses.</li>
+    <li><a href="https://brooker.co.za/blog/2022/02/16/circuit-breakers.html">Will circuit breakers solve my problems?</a> by Marc Brooker. A skeptical, practitioner take on when breakers help and when a retry budget is the better tool.</li>
+    <li><a href="https://martinfowler.com/bliki/CircuitBreaker.html">CircuitBreaker</a> by Martin Fowler. The canonical short explanation of the pattern and its states.</li>
+    <li><a href="https://github.com/Netflix/Hystrix/wiki/How-it-Works">Hystrix: How it Works</a>, Netflix. The wiki behind the library that popularized bulkhead isolation and breaker-per-dependency design in service meshes.</li>
+    <li><a href="https://resilience4j.readme.io/docs/circuitbreaker">resilience4j CircuitBreaker documentation</a>. A concrete, actively maintained closed/open/half-open state machine reference.</li>
+    <li><a href="https://sre.google/sre-book/handling-overload/">Handling Overload</a>, Google SRE Book. Load shedding and graceful degradation as the last line of defense.</li>
+    <li><a href="retry-storm.html">Retry Amplification and Timeout Budgets</a>, the companion topic on this site. Retries and breakers solve adjacent but different problems and often sit in the same call path.</li>
+  </ul>
+</main>
+
+</body>
+</html>
