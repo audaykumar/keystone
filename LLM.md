@@ -239,6 +239,7 @@ Completed documentation:
 - `docs/delivery-semantics/overview.html`: delivery semantics and idempotent consumers with measured balance evidence
 - `docs/redis/overview.html`: Redis internals, data structures, use cases, persistence, eviction, and Lua scripting overview
 - `docs/redis/labs/`: Redis topic pages for caching, rate limiting, locks, streams, and Pub/Sub. These need another pass so they read as topic-first learning notes instead of lab-first pages.
+- `docs/security/webhook-hmac.html`: webhook HMAC signatures, timestamp tolerance, nonce replay protection, and raw-body verification.
 - `docs/toolbox/overview.html`: systems-tool mental models, comparisons, workload selector, and clickable payment architecture
 - `docs/index.html`: backend engineering map with tracks for protocols, storage, distributed systems, messaging, reliability, security, observability, APIs, deployment, and runtime topics
 
@@ -275,6 +276,9 @@ teardown confirmed):
   loop). NOTE: open-loop load is essential; closed-loop workers self-throttle
   and hide the storm. Offered rate must sit below degraded capacity so only
   amplification tips it over.
+- `labs/security/webhook-hmac/`: HMAC-signed webhook receiver/client.
+  Demonstrates HMAC-only replay acceptance vs secure HMAC + timestamp + nonce
+  rejection of tamper, stale timestamp, and replay.
 
 Kafka labs share one Go module at `labs/kafka/` (`cmd/<lab>` binaries, one
 Dockerfile with an `ARG LAB`), mirroring the Redis labs layout.
