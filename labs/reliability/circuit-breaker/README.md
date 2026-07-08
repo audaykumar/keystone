@@ -129,6 +129,30 @@ off).
   callers still pay the full queueing delay even though nothing was ever going
   to succeed.
 
+## Implementation hooks
+
+- **gRPC client interceptor.** Protects the caller before an RPC leaves the
+  process: classify by `Service/Method`, acquire a per-dependency token, check
+  the breaker, then call or fail fast.
+- **gRPC server interceptor.** Protects the callee before the handler runs:
+  classify by method, caller, tenant, workload, or priority, acquire that
+  pool's token, then run the handler. If the pool is full, return
+  `codes.ResourceExhausted`.
+- **HTTP middleware.** Same placement as gRPC: outbound middleware for
+  caller-side dependency limits, inbound middleware for callee-side workload
+  limits.
+- **Queue workers and background jobs.** Use separate worker pools or
+  semaphores per queue, message type, tenant, or priority so a slow background
+  workload cannot spend foreground request capacity.
+- **Database-heavy services.** Keep independent connection or concurrency
+  limits for foreground requests, background jobs, reporting queries, and
+  backfills. A single global DB pool is often a hidden shared bulkhead with no
+  isolation.
+
+The useful bulkhead key is the thing that should be isolated: dependency,
+endpoint, method, caller, tenant, workload, or priority. A full pool should
+produce an explicit, observable rejection, not a hidden timeout.
+
 ## What to observe
 
 - In `make break`, A and B share one pool. `backend-b`'s calls, throttled to
