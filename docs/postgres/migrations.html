@@ -127,8 +127,12 @@ done. worst single-query latency or stall: 1.0343s</code></pre>
     <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
     <tbody>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/migrations/scripts/unsafe_alter.sql"><code>scripts/unsafe_alter.sql</code></a></td><td>The one-line ALTER that creates the measured stall; the risk is context, not syntax.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/migrations/scripts/safe_alter.sql"><code>scripts/safe_alter.sql</code></a></td><td>The short <code>lock_timeout</code> pattern that retries instead of waiting behind traffic.</td></tr>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/migrations/scripts/validate_region.sql"><code>scripts/validate_region.sql</code></a></td><td>The full NOT VALID, VALIDATE, SET NOT NULL contract sequence.</td></tr>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/migrations/src/main.go"><code>src/main.go</code></a></td><td>Load generator with per-second percentiles, and the batched backfill loop.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/migrations/README.md"><code>README.md</code></a></td><td>Measured outputs and notes for lock queues, backfill, validation, and concurrent index creation.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/migrations/Makefile"><code>Makefile</code></a></td><td>Targets for unsafe/safe ALTER, backfill, validation, index breakage, and safe indexing.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/migrations/compose.yaml"><code>compose.yaml</code></a></td><td>Postgres service and deterministic lab environment.</td></tr>
     </tbody>
   </table>
 

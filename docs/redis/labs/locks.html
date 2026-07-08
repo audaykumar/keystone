@@ -68,6 +68,7 @@ end</code></pre>
   </div>
 
   <h2>Run Targets</h2>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/redis/locks"><code>labs/redis/locks</code></a>, backed by <a href="https://github.com/audaykumar/keystone/tree/main/labs/redis/cmd/locks"><code>labs/redis/cmd/locks</code></a>.</p>
   <div class="run-grid">
     <div class="run-card"><h3><code>make break</code></h3><p>Naive release. Look for <code>WRONG-OWNER DEL</code> lines.</p></div>
     <div class="run-card"><h3><code>make test</code></h3><p>Lua release. Look for expired holders skipping <code>DEL</code>.</p></div>
@@ -79,6 +80,17 @@ end</code></pre>
     <strong>What this fix does not solve</strong>
     The lab makes work duration longer than the lock TTL. That means concurrent critical-section occupancy can still happen. Lua compare-and-delete only prevents deleting another worker's lock. Correct writes often also need lock extension, idempotency, or fencing tokens.
   </div>
+
+  <h2>Code Pointers</h2>
+  <table>
+    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/locks/main.go"><code>cmd/locks/main.go</code></a></td><td>The expired-owner scenario, unsafe <code>DEL</code>, and Lua compare-and-delete release.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/locks/Makefile"><code>locks/Makefile</code></a></td><td>Targets for unsafe release, safe release, and stress runs.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/locks/compose.yaml"><code>locks/compose.yaml</code></a></td><td>Redis container used by the lab.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/locks/README.md"><code>locks/README.md</code></a></td><td>Expected output and the limit of compare-and-delete.</td></tr>
+    </tbody>
+  </table>
 
   <div class="lab-nav">
     <a href="cache.html">Cache</a>

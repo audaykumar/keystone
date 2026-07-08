@@ -127,6 +127,7 @@ test (DLQ + retry-count guard, MAX_ATTEMPTS=3, prefetch=5):
     <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
     <tbody>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/messaging/rabbitmq/src/main.go"><code>src/main.go</code></a></td><td>Idempotent topology declaration, the manual ack/nack branches for break vs test mode, and the produced-vs-completed order tracking.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/messaging/rabbitmq/README.md"><code>README.md</code></a></td><td>Scenario explanation, measured break/test output, and RabbitMQ concept notes.</td></tr>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/messaging/rabbitmq/Makefile"><code>Makefile</code></a></td><td>The break/test scenario env overrides and the management-API queue-depth checks.</td></tr>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/messaging/rabbitmq/compose.yaml"><code>compose.yaml</code></a></td><td>Pinned <code>rabbitmq:3.13-management</code>, the healthcheck/<code>--wait</code> lifecycle, and the non-<code>guest</code> user needed for cross-container AMQP logins.</td></tr>
     </tbody>

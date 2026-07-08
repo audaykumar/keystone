@@ -115,6 +115,9 @@ make test (outbox):
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/cmd/outbox/main.go"><code>cmd/outbox/main.go</code></a></td><td><code>dualwrite</code> vs <code>outbox</code> differ by a small transaction change; the crash lands in the same place in both.</td></tr>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/outbox/scripts/connector.json"><code>scripts/connector.json</code></a></td><td>The Debezium configuration for reading the outbox table from PostgreSQL.</td></tr>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/outbox/migrations/001_outbox.sql"><code>migrations/001_outbox.sql</code></a></td><td>The outbox table and its event contract fields.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/outbox/README.md"><code>README.md</code></a></td><td>Dual-write failure notes, outbox recovery path, and observed audit output.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/outbox/Makefile"><code>Makefile</code></a></td><td>Targets for dual-write breakage, outbox verification, connector status, and outbox row inspection.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/outbox/compose.yaml"><code>compose.yaml</code></a></td><td>Postgres, Kafka, and Debezium Connect wiring for the CDC run.</td></tr>
     </tbody>
   </table>
 

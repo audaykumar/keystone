@@ -112,7 +112,9 @@ fixed (budgeted):
     <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
     <tbody>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/reliability/retry-storm/src/main.go"><code>src/main.go</code></a></td><td>The proxy retry loop, the token-bucket retry budget, deadline propagation, and the open-loop load generator.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/reliability/retry-storm/README.md"><code>README.md</code></a></td><td>Measured storm output, retry-budget explanation, and how to interpret amplification.</td></tr>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/reliability/retry-storm/Makefile"><code>Makefile</code></a></td><td>The naive and fixed policies side by side as environment overrides; the only difference is jitter, budget, and retry budget.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/reliability/retry-storm/compose.yaml"><code>compose.yaml</code></a></td><td>The load, edge, api, and backend services used to reproduce the retry cascade.</td></tr>
     </tbody>
   </table>
 

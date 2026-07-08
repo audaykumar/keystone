@@ -106,7 +106,9 @@ protected (isolated):
     <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
     <tbody>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/reliability/circuit-breaker/src/main.go"><code>src/main.go</code></a></td><td>The breaker state machine, the per-downstream bulkhead pools, the shed-versus-queue branch, and the two independent open-loop load generators.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/reliability/circuit-breaker/README.md"><code>README.md</code></a></td><td>Measured cascade output, single-knob breaker/bulkhead runs, and implementation hook notes.</td></tr>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/reliability/circuit-breaker/Makefile"><code>Makefile</code></a></td><td>The unprotected and protected policies as environment overrides, plus single-knob targets isolating the breaker and the bulkhead.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/reliability/circuit-breaker/compose.yaml"><code>compose.yaml</code></a></td><td>The HTTP chain services and environment-driven breaker, bulkhead, and shedding policy.</td></tr>
     </tbody>
   </table>
 

@@ -112,7 +112,7 @@ return {1, count + 1}</code></pre>
   </div>
 
   <h2>Lab Details And Output</h2>
-  <p>The runnable lab is under <code>labs/redis/ratelimit</code>. It deliberately waits for a clock boundary, sends 8 requests just before it, then sends 8 more just after it.</p>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/redis/ratelimit"><code>labs/redis/ratelimit</code></a>. It deliberately waits for a clock boundary, sends 8 requests just before it, then sends 8 more just after it.</p>
 
   <div class="run-grid">
     <div class="run-card"><h3><code>make break</code></h3><p>Runs fixed-window mode. It should fail because both batches are allowed.</p></div>
@@ -142,6 +142,9 @@ return {1, count + 1}</code></pre>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L42-L57"><code>slidingWindowScript</code></a></td><td>Stores request timestamps in a sorted set and removes only entries older than the rolling window.</td></tr>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L102-L161"><code>runFixed</code></a></td><td>Waits until 200ms before a clock boundary, sends the first batch, waits 200ms after the boundary, then sends the burst.</td></tr>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/ratelimit/main.go#L168-L226"><code>runSliding</code></a></td><td>Uses the same timing as <code>runFixed</code>, but the first batch is still inside the rolling window when the second batch arrives.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/ratelimit/Makefile"><code>ratelimit/Makefile</code></a></td><td>Targets that run fixed-window breakage and sliding-window recovery.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/ratelimit/compose.yaml"><code>ratelimit/compose.yaml</code></a></td><td>Redis container used by the lab.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/ratelimit/README.md"><code>ratelimit/README.md</code></a></td><td>Scenario notes and expected fixed/sliding behavior.</td></tr>
     </tbody>
   </table>
 

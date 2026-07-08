@@ -115,6 +115,9 @@ idempotent:     applied=500 skipped-as-duplicate=100
     <tbody>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/cmd/delivery/main.go"><code>cmd/delivery/main.go</code></a></td><td>All three semantics differ only in the placement of <code>CommitMessages</code> and one dedupe insert; see <code>consume</code> and <code>apply</code>.</td></tr>
       <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/delivery/migrations/001_ledger.sql"><code>migrations/001_ledger.sql</code></a></td><td>The dedupe table: a primary key doing distributed-systems work.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/delivery/README.md"><code>README.md</code></a></td><td>Scenario notes, expected balances, and how to read each failure mode.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/delivery/Makefile"><code>Makefile</code></a></td><td>The at-most-once, at-least-once, and idempotent runs as explicit targets.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/kafka/delivery/compose.yaml"><code>compose.yaml</code></a></td><td>Kafka and Postgres services used by the delivery-semantics lab.</td></tr>
     </tbody>
   </table>
 

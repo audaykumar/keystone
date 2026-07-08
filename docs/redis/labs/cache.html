@@ -63,6 +63,7 @@
   </table>
 
   <h2>Run Targets</h2>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/redis/cache"><code>labs/redis/cache</code></a>, backed by the shared Redis Go driver under <a href="https://github.com/audaykumar/keystone/tree/main/labs/redis/cmd/cache"><code>labs/redis/cmd/cache</code></a>.</p>
   <div class="run-grid">
     <div class="run-card"><h3><code>make break</code></h3><p>Runs naive mode. Look for many <code>GET MISS</code> lines and many backend calls.</p></div>
     <div class="run-card"><h3><code>make test</code></h3><p>Runs fix mode. Look for one backend call per round and many workers waiting for the fill.</p></div>
@@ -79,6 +80,17 @@
     <li>If the backend call fails, the winner should release the fill lock or let it expire quickly.</li>
     <li>Hot keys may need jittered TTLs so many keys do not expire at the same time.</li>
   </ul>
+
+  <h2>Code Pointers</h2>
+  <table>
+    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/cache/main.go"><code>cmd/cache/main.go</code></a></td><td>The naive cache miss path, single-flight fill marker, and backend-call counter.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cache/Makefile"><code>cache/Makefile</code></a></td><td>Targets for broken, fixed, and larger load scenarios.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cache/compose.yaml"><code>cache/compose.yaml</code></a></td><td>Redis container used by the lab.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cache/README.md"><code>cache/README.md</code></a></td><td>Short explanation of the cache-stampede invariant and expected output.</td></tr>
+    </tbody>
+  </table>
 
   <div class="lab-nav">
     <a href="ratelimit.html">Rate limit</a>

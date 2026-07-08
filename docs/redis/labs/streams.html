@@ -68,6 +68,7 @@
   </table>
 
   <h2>Run Targets</h2>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/redis/streams"><code>labs/redis/streams</code></a>, backed by <a href="https://github.com/audaykumar/keystone/tree/main/labs/redis/cmd/streams"><code>labs/redis/cmd/streams</code></a>.</p>
   <div class="run-grid">
     <div class="run-card"><h3><code>make break</code></h3><p>Consumer crashes halfway. Look for <code>XPENDING total</code> above zero.</p></div>
     <div class="run-card"><h3><code>make test</code></h3><p>Recovery consumer uses <code>XAUTOCLAIM</code>. Look for recovered messages and PEL zero.</p></div>
@@ -81,6 +82,17 @@
     <li><code>XAUTOCLAIM</code> needs a sane idle threshold. Too low can steal work from slow but healthy consumers.</li>
     <li>Streams keep data until trimmed. Plan retention with <code>XTRIM</code> or maxlen policies.</li>
   </ul>
+
+  <h2>Code Pointers</h2>
+  <table>
+    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/streams/main.go"><code>cmd/streams/main.go</code></a></td><td>The consumer crash, pending-entry check, <code>XAUTOCLAIM</code>, and <code>XACK</code> recovery path.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/streams/Makefile"><code>streams/Makefile</code></a></td><td>Targets for crash, recovery, and larger stream runs.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/streams/compose.yaml"><code>streams/compose.yaml</code></a></td><td>Redis container used by the lab.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/streams/README.md"><code>streams/README.md</code></a></td><td>Expected output for PEL recovery.</td></tr>
+    </tbody>
+  </table>
 
   <div class="lab-nav">
     <a href="cache.html">Cache</a>

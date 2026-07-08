@@ -65,6 +65,7 @@
   </table>
 
   <h2>Run Targets</h2>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/redis/pubsub"><code>labs/redis/pubsub</code></a>, backed by <a href="https://github.com/audaykumar/keystone/tree/main/labs/redis/cmd/pubsub"><code>labs/redis/cmd/pubsub</code></a>.</p>
   <div class="run-grid">
     <div class="run-card"><h3><code>make break</code></h3><p>Pub/Sub mode. Look for SUB-B going offline and missing messages permanently.</p></div>
     <div class="run-card"><h3><code>make test</code></h3><p>Streams mode. Look for the consumer catching up after reconnect.</p></div>
@@ -77,6 +78,17 @@
     <li>A successful <code>PUBLISH</code> does not mean every logical consumer processed the message.</li>
     <li>Streams are stronger, but they require trimming, consumer-group monitoring, and idempotent handlers.</li>
   </ul>
+
+  <h2>Code Pointers</h2>
+  <table>
+    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/cmd/pubsub/main.go"><code>cmd/pubsub/main.go</code></a></td><td>The offline subscriber case and the streams comparison path.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/pubsub/Makefile"><code>pubsub/Makefile</code></a></td><td>Targets for fire-and-forget breakage and stream-backed recovery.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/pubsub/compose.yaml"><code>pubsub/compose.yaml</code></a></td><td>Redis container used by the lab.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/redis/pubsub/README.md"><code>pubsub/README.md</code></a></td><td>Expected output for message loss and stream catch-up.</td></tr>
+    </tbody>
+  </table>
 
   <div class="lab-nav">
     <a href="cache.html">Cache</a>
