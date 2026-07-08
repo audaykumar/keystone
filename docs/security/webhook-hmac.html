@@ -67,6 +67,10 @@
     <li><strong>Separate replay protection from idempotency:</strong> replay protection rejects duplicate signed deliveries at the edge; idempotency keeps internal effects safe.</li>
     <li><strong>Rotate secrets with overlap:</strong> accept old and new secrets during rotation, then remove the old secret after providers have switched.</li>
   </ul>
+  <h3>Production examples</h3>
+  <p>Webhook verification belongs at the first trusted boundary of the receiving service, before parsing the event into business objects or enqueueing internal work. Capture the raw request body, timestamp, nonce or event id, and signature headers, verify them, then pass a trusted event object to the rest of the system.</p>
+  <p>Common webhook sources include payment providers, identity providers, source-control systems, chat platforms, and internal event gateways. In all of them, HTTPS protects transport, while HMAC proves the body was signed by a party that knows the shared secret. The two controls solve different problems.</p>
+  <p>Replay protection and idempotency should both exist. Replay protection rejects the same signed delivery inside the freshness window. Idempotency protects the downstream effect when a provider legitimately retries a valid event after a timeout, or when the receiver crashes after doing the work but before returning success.</p>
 
   <h2>Lab Evidence</h2>
   <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/security/webhook-hmac"><code>labs/security/webhook-hmac</code></a>: a Go webhook receiver and client. The insecure mode verifies HMAC only. The secure mode verifies HMAC, timestamp tolerance, and nonce replay.</p>

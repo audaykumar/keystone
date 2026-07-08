@@ -76,6 +76,10 @@
     <li><strong>Monitor publisher lag:</strong> polling backlog or replication slot lag means committed business state is not yet visible as events.</li>
     <li><strong>Separate publish retries from business retries:</strong> the request path should not need to redo the business write just because broker publish was delayed.</li>
   </ul>
+  <h3>Production examples</h3>
+  <p>Use an outbox when a request changes local state and other systems must learn about that change: an order service emits <code>OrderCreated</code>, a billing service emits <code>InvoicePaid</code>, an identity service emits <code>UserVerified</code>, or an inventory service emits <code>StockReserved</code>. The request commits the state change and the outbox row together; a relay or CDC connector publishes after commit.</p>
+  <p>Do not use a direct publish when losing the event would leave another system permanently unaware of committed state. The risky pattern is "write database, publish event" in the same request without a transaction that covers both. A crash, deploy, or broker timeout between those two steps creates a missing event that retrying the request may not fix if the business write is already idempotent.</p>
+  <p>The outbox is not only a messaging trick. It is also an operations surface: alert on rows not published after a short delay, connector lag, replication slot growth, and poison events that repeatedly fail serialization or broker publish.</p>
 
   <h2>Lab Evidence</h2>
   <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/kafka/outbox"><code>labs/kafka/outbox</code></a>: Postgres with logical WAL, Kafka, Debezium Connect, and a Go writer that hard-crashes after committing order 500 and before publishing its event. The audit is set arithmetic: every <code>order_ref</code> in Postgres must appear in the event topic.</p>

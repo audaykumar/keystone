@@ -52,7 +52,7 @@
   </figure>
 
   <h3>Synchronized retries and jitter</h3>
-  <p>When many callers fail at the same instant, a fixed backoff makes them all retry at the same later instant too. The result is a pulsing second wave, a thundering herd on a schedule. <em>Jitter</em> randomizes each backoff so the retries spread out instead of stacking. Full jitter, <code>sleep = random(0, base &times; 2^attempt)</code>, is the simplest form that works well: it keeps exponential growth on average while destroying the synchronization.</p>
+  <p>When many callers fail at the same instant, a fixed backoff makes them all retry at the same later instant too. The result is a pulsing second wave, a thundering herd on a schedule. <em>Jitter</em> randomizes each backoff so the retries spread out instead of stacking. Full jitter, <code>sleep = random(0, base &#215; 2^attempt)</code>, is the simplest form that works well: it keeps exponential growth on average while destroying the synchronization.</p>
 
   <h3>Timeout budgets and deadline propagation</h3>
   <p>A per-attempt timeout bounds one call. It does nothing to bound the total time a request spends being retried across a chain. A <em>timeout budget</em> is an end-to-end deadline set at the entry point and passed down with the request, shrinking as time is spent. Each hop checks the remaining budget before starting an attempt, and refuses to begin one it cannot finish in time. Doomed retries are never sent, and the tail latency of the whole chain is capped at the budget instead of at the sum of every hop's independent timeouts.</p>
@@ -72,9 +72,13 @@
     <li><strong>Only retry idempotent operations,</strong> or make them idempotent first with an idempotency key.</li>
     <li><strong>Shed load as the escape hatch.</strong> When budgets are exhausted, rejecting requests quickly is healthier than accepting work you cannot complete.</li>
   </ul>
+  <h3>Production examples</h3>
+  <p>Retry storms show up at dependency boundaries: service-to-service RPCs, SDK calls to third-party APIs, database failover windows, cache misses that fall through to an overloaded origin, and background workers retrying the same failed job at the same time. The first question is not "how many retries should we use"; it is "which layer is allowed to retry at all."</p>
+  <p>A good default is one retry owner per request path. For example, the edge gateway may retry a safe read once, while downstream services fail fast and propagate the remaining deadline. For an external API call, the service client may own retries with jitter and an idempotency key, while the job runner only reschedules the whole job after a longer delay. Avoid stacking retries in the client library, service mesh, application code, and queue worker at the same time.</p>
+  <p>Measure retry amplification directly. Compare user requests to downstream attempts, or job executions to provider calls. A ratio near 1 means the system is mostly doing original work; a rising ratio means retries are becoming the workload.</p>
 
   <h2>Lab Evidence</h2>
-  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/reliability/retry-storm"><code>labs/reliability/retry-storm</code></a>: a real HTTP chain <code>load &rarr; edge &rarr; api &rarr; backend</code>, with open-loop load offered below the degraded backend's capacity so that only amplification can push it over. The load reporter prints the amplification factor directly as backend calls divided by client requests.</p>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/reliability/retry-storm"><code>labs/reliability/retry-storm</code></a>: a real HTTP chain <code>load &#8594; edge &#8594; api &#8594; backend</code>, with open-loop load offered below the degraded backend's capacity so that only amplification can push it over. The load reporter prints the amplification factor directly as backend calls divided by client requests.</p>
   <div class="run-grid">
     <div class="run-card"><h3><code>make break</code></h3><p>Naive: three blind attempts per hop, fixed backoff, no budget. Amplification climbs toward 9x and success collapses.</p></div>
     <div class="run-card"><h3><code>make test</code></h3><p>Fixed: full jitter, an end-to-end timeout budget, and a 20% retry budget. Amplification stays near 1x and success recovers.</p></div>

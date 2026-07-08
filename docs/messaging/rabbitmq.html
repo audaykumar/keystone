@@ -84,6 +84,10 @@
     <li><strong>Size the dead-letter queue's retention and alerting like any other operational queue.</strong> A DLQ with no consumer and no alert on nonzero depth is just a slower way to lose messages.</li>
     <li><strong>Prefer quorum queues or streams for replicated durable queues.</strong> Classic queues remain useful for some workloads, but classic mirroring is gone in RabbitMQ 4.x.</li>
   </ul>
+  <h3>Production examples</h3>
+  <p>RabbitMQ fits work that should be claimed by one worker: sending emails, resizing images, generating reports, dispatching webhooks, or running fraud-review jobs. A successful worker <code>ack</code>s the message. A worker that cannot process the message decides whether to retry, requeue, or dead-letter it.</p>
+  <p>Dead-letter queues matter most when one malformed or impossible message can block useful work behind it. Examples: an email job with an invalid template id, an image job for a corrupt file, a webhook delivery with an unsupported destination, or a report job whose input references deleted data. Retrying forever hides the problem and wastes worker capacity; dead-lettering parks the failed message where an operator or replay tool can inspect it.</p>
+  <p>Prefetch is the production tuning knob. A low prefetch limits how much work a crashed worker can hold, but it makes head-of-line blocking sharper. A higher prefetch improves throughput for fast homogeneous jobs, but increases the amount of in-flight work that must be redelivered after a worker dies.</p>
 
   <h2>Lab Evidence</h2>
   <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/messaging/rabbitmq"><code>labs/messaging/rabbitmq</code></a>: one topology, <code>lab.direct</code> exchange bound to <code>work.queue</code>, <code>lab.dlx</code> bound to <code>work.dlq</code>, and a producer/consumer pair that switches between "no dead-letter target" and "dead-letter target + retry-count guard" purely through queue arguments set at declare time.</p>

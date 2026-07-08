@@ -77,6 +77,10 @@
     <li><strong>Design for replay:</strong> old messages should be safe to reprocess during recovery, backfills, and manual audits.</li>
     <li><strong>Reconcile anyway:</strong> idempotency handles retry ambiguity; reconciliation catches bugs, operator mistakes, and missing external callbacks.</li>
   </ul>
+  <h3>Production examples</h3>
+  <p>Use at-most-once for data that is useful but disposable: metrics samples, typing indicators, cache-warming hints, or presence pings. Losing one update is acceptable because the next update replaces it or the aggregate still remains useful.</p>
+  <p>Use at-least-once plus idempotency for side effects that must happen but may be retried: creating a support ticket from an event, sending a customer notification, updating a search index, writing a projection table, or calling a provider that accepts an idempotency key. The duplicate should be visible in logs and metrics, but it should not create a second business effect.</p>
+  <p>Put the idempotency check at the side-effect boundary. A Kafka consumer that writes to Postgres should insert the processed event id in the same transaction as the row it changes. An HTTP API should store the idempotency key and response before returning. A worker that calls an external API should pass the provider's idempotency key and record the attempt so retries do not create a second remote action.</p>
 
   <h2>Lab Evidence</h2>
   <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/kafka/delivery"><code>labs/kafka/delivery</code></a>: 1,000 payment events, each crediting 100 cents, applied to a Postgres balance by a consumer that hard-crashes (<code>os.Exit</code>, no cleanup) after event 500. The verify step compares the balance to the exact expected 100,000 cents.</p>
