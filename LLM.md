@@ -267,9 +267,22 @@ teardown confirmed):
   loses nothing.
 - `labs/redis/cli/`: redis-cli drill scripts (cache, ratelimit, lock,
   streams, pubsub, zset), all verified.
+- `labs/reliability/retry-storm/`: real HTTP chain (load -> edge -> api ->
+  backend), open-loop load, backend with a rate-based capacity model. Measured
+  the metastable storm: naive blind retries 7.30x amplification / 22.8% success
+  / p50 1.88s; fixed (jitter + timeout budget + 20% retry budget) 1.58x / 76.8%
+  / p50 10ms. Concept page + 2 SVG diagrams (amplification tree, metastable
+  loop). NOTE: open-loop load is essential; closed-loop workers self-throttle
+  and hide the storm. Offered rate must sit below degraded capacity so only
+  amplification tips it over.
 
 Kafka labs share one Go module at `labs/kafka/` (`cmd/<lab>` binaries, one
 Dockerfile with an `ARG LAB`), mirroring the Redis labs layout.
+
+Concept-first HTML pages use `docs/assets/topic.css` + `docs/assets/diagrams.css`
+with hand-written SVG diagrams under `docs/assets/diagrams/`. Diagrams live in
+the concept sections (generic, lab-free); the lab appears only in the "Lab
+evidence" section, per the lab-deletion rule in the HTML Learning Docs section.
 
 The toolbox architecture distinguishes synchronous requests, Kafka streams, queue delivery, workflows, storage writes, replication/CDC, and metrics. Components and connections expose compact popovers plus detailed explanations.
 
@@ -284,8 +297,10 @@ docs/       Durable HTML learning pages
 
 ## Next Session
 
-Phase 1 (Postgres) and Phase 2 (Kafka) labs are implemented, measured, and
-documented. Continue with one of these:
+Phase 1 (Postgres), Phase 2 (Kafka), and the first Reliability lab (retry
+storm) are implemented, measured, and documented. Reliability track next:
+circuit breakers / bulkheads / load shedding, which can reuse the retry-storm
+compose chain. Then message queues (RabbitMQ + SQS, DLQs). Or continue with:
 
 1. Start `projects/ledger/`: the Python multi-currency ledger, thin first
    slice: accounts + single-currency transfer, Postgres, migrations, Docker

@@ -1,0 +1,68 @@
+name: retry-storm
+
+# The retry policy of edge and api is driven entirely by environment variables
+# so the naive and fixed scenarios are the same image with different overrides.
+# The Makefile sets these per target and force-recreates the two proxies.
+
+x-driver: &driver
+  build:
+    context: ./src
+  image: retry-storm-driver:local
+
+services:
+  backend:
+    <<: *driver
+    environment:
+      ROLE: backend
+      LATENCY_MS: "5"
+      CAPACITY: "220"
+      DEGRADED_CAPACITY: "90"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/stats"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  api:
+    <<: *driver
+    environment:
+      ROLE: api
+      DOWNSTREAM: "http://backend:8080"
+      RETRY_ATTEMPTS: "${RETRY_ATTEMPTS:-1}"
+      BACKOFF_MS: "${BACKOFF_MS:-20}"
+      JITTER: "${JITTER:-none}"
+      ATTEMPT_TIMEOUT: "${ATTEMPT_TIMEOUT:-200}"
+      DEADLINE_MS: "${API_DEADLINE_MS:-0}"
+      RETRY_BUDGET: "${RETRY_BUDGET:-0}"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  edge:
+    <<: *driver
+    environment:
+      ROLE: edge
+      DOWNSTREAM: "http://api:8080"
+      RETRY_ATTEMPTS: "${RETRY_ATTEMPTS:-1}"
+      BACKOFF_MS: "${BACKOFF_MS:-20}"
+      JITTER: "${JITTER:-none}"
+      ATTEMPT_TIMEOUT: "${ATTEMPT_TIMEOUT:-500}"
+      DEADLINE_MS: "${EDGE_DEADLINE_MS:-0}"
+      RETRY_BUDGET: "${RETRY_BUDGET:-0}"
+    depends_on:
+      api:
+        condition: service_started
+
+  load:
+    <<: *driver
+    profiles: ["tools"]
+    environment:
+      ROLE: load
+      TARGET: "http://edge:8080"
+      BACKEND: "http://backend:8080"
+      RATE: "${RATE:-60}"
+      DURATION_S: "${DURATION_S:-20}"
+      LABEL: "${LABEL:-run}"
+    depends_on:
+      edge:
+        condition: service_started

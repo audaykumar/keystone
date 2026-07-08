@@ -4,3 +4,4 @@ graphify-out/
 # compiled lab binaries
 labs/**/src/pgmig
 .DS_Store
+labs/reliability/retry-storm/src/retrystorm

@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 620" role="img" aria-labelledby="title desc">
+  <title id="title">Retry amplification across a call chain</title>
+  <desc id="desc">One user request becomes three calls at the edge and nine at the backend when every hop retries three times, multiplying load into a struggling dependency.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ba7b4"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #e6edf3; }
+      .muted { fill: #9ba7b4; }
+      .small { font-size: 16px; }
+      .label { font-size: 18px; font-weight: 700; }
+      .count { font-size: 30px; font-weight: 750; }
+      .title { font-size: 28px; font-weight: 750; }
+      .box { fill: #161b22; stroke: #30363d; stroke-width: 2; }
+      .warn { fill: #2a2416; stroke: #e3b341; stroke-width: 2; }
+      .bad { fill: #2d1b1e; stroke: #ff7b72; stroke-width: 2; }
+      .edge1 { stroke: #9ba7b4; stroke-width: 2.5; marker-end: url(#arrow); fill: none; }
+      .edge3 { stroke: #e3b341; stroke-width: 2; marker-end: url(#arrow); fill: none; }
+      .edge9 { stroke: #ff7b72; stroke-width: 1.6; marker-end: url(#arrow); fill: none; opacity: 0.85; }
+    </style>
+  </defs>
+  <rect width="1100" height="620" fill="#0d1117"/>
+  <text class="title" x="44" y="54">Retry amplification: 3 attempts per hop become 9 backend calls</text>
+  <text class="muted small" x="44" y="84">Each layer retries independently, so the counts multiply down the chain instead of adding.</text>
+
+  <!-- column headers -->
+  <text class="label" x="86" y="150">User</text>
+  <text class="label" x="330" y="150">edge (x3)</text>
+  <text class="label" x="600" y="150">api (x3)</text>
+  <text class="label" x="900" y="150">backend</text>
+
+  <!-- user -->
+  <rect class="box" x="60" y="300" width="120" height="60" rx="12"/>
+  <text class="small" x="88" y="336">1 request</text>
+
+  <!-- edge node -->
+  <rect class="warn" x="300" y="300" width="120" height="60" rx="12"/>
+  <text class="count" x="345" y="342">x3</text>
+
+  <!-- api nodes (3) -->
+  <rect class="warn" x="560" y="196" width="110" height="52" rx="10"/>
+  <rect class="warn" x="560" y="304" width="110" height="52" rx="10"/>
+  <rect class="warn" x="560" y="412" width="110" height="52" rx="10"/>
+  <text class="small muted" x="588" y="228">api x3</text>
+  <text class="small muted" x="588" y="336">api x3</text>
+  <text class="small muted" x="588" y="444">api x3</text>
+
+  <!-- backend -->
+  <rect class="bad" x="860" y="286" width="150" height="88" rx="12"/>
+  <text class="count" x="905" y="326">9x</text>
+  <text class="small muted" x="880" y="356">calls received</text>
+
+  <!-- 1 -> edge -->
+  <path class="edge1" d="M 180 330 L 298 330"/>
+
+  <!-- edge -> 3 api -->
+  <path class="edge3" d="M 420 322 L 558 224"/>
+  <path class="edge3" d="M 420 330 L 558 330"/>
+  <path class="edge3" d="M 420 338 L 558 436"/>
+
+  <!-- each api -> 3 backend (9 total) -->
+  <path class="edge9" d="M 670 214 L 858 300"/>
+  <path class="edge9" d="M 670 222 L 858 318"/>
+  <path class="edge9" d="M 670 230 L 858 330"/>
+  <path class="edge9" d="M 670 322 L 858 318"/>
+  <path class="edge9" d="M 670 330 L 858 330"/>
+  <path class="edge9" d="M 670 338 L 858 342"/>
+  <path class="edge9" d="M 670 430 L 858 330"/>
+  <path class="edge9" d="M 670 438 L 858 342"/>
+  <path class="edge9" d="M 670 446 L 858 360"/>
+
+  <text class="muted small" x="44" y="560">The backend had capacity for the real traffic. The amplified 9x is what pushes it over the edge, and the extra failures cause still more retries.</text>
+  <text class="label" x="44" y="596" fill="#ff7b72">1 request in, up to 9 calls out</text>
+</svg>

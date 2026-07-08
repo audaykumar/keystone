@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Retry Amplification &amp; Timeout Budgets | keystone</title>
+  <link rel="stylesheet" href="../assets/topic.css" />
+  <link rel="stylesheet" href="../assets/diagrams.css" />
+</head>
+<body>
+<div id="site-nav"></div>
+<script src="../components/nav.js?v=logo1"></script>
+
+<main>
+  <div class="crumbs"><a href="../index.html">keystone</a><span>/</span><span>Retry amplification &amp; timeout budgets</span></div>
+  <h1>Retry Amplification and Timeout Budgets</h1>
+  <p class="subtitle">A retry makes one request more likely to succeed. Stacked at every hop of a call chain, retries multiply load, and against a struggling dependency that multiplication becomes a self-inflicted outage that outlives its own trigger.</p>
+
+  <h2>TLDR</h2>
+  <div class="callout">
+    <strong>Quick brief</strong>
+    <ul class="tldr-list">
+      <li><strong>Retries multiply, they do not add:</strong> three attempts at each of two hops is up to nine calls at the bottom, not six.</li>
+      <li><strong>A slow dependency plus blind retries is a feedback loop:</strong> errors cause retries, retries raise load, load causes more errors. This is a metastable failure, and it persists after the original fault is gone.</li>
+      <li><strong>Bound the wait, not just the count:</strong> a timeout budget propagated down the chain stops a hop from starting an attempt it cannot finish in time.</li>
+      <li><strong>Cap retries as a fraction of traffic:</strong> a retry budget lets retries help during isolated failures but refuses to let them become the load during a broad one.</li>
+    </ul>
+  </div>
+
+  <h2>Mental Model</h2>
+  <p>Think of a request passing through several layers, each of which retries its next hop on failure. Retries at one layer are independent of retries at the layers above, so the attempt counts compound. If every layer retries up to three times, one user request can become nine calls at the bottom of the stack. The deeper and more aggressive the retry configuration, the larger the multiplier.</p>
+  <p>That multiplier is harmless when the dependency is healthy and has spare capacity. It becomes dangerous at exactly the moment retries are most tempting: when the dependency is already struggling. Then the amplified load is aimed straight at the thing least able to absorb it.</p>
+
+  <figure class="terminal-shot">
+    <img src="../assets/diagrams/retry-amplification.svg" alt="A call chain where one user request becomes three calls at the edge and nine at the backend because each hop retries three times." />
+  </figure>
+
+  <h2>Ground-Up Explanation</h2>
+  <h3>Why retry at all</h3>
+  <p>Failures come in two flavors. A <em>transient</em> failure, a dropped packet, a brief leader election, a single overloaded node, will likely succeed on a second attempt, so retrying is correct. A <em>persistent</em> failure, a bad request, a dependency that is down hard, will fail again no matter how many times you try, so retrying only wastes work. The trouble is that a caller usually cannot tell which one it is looking at, and the safe-seeming default, "retry a few times," treats every failure as transient.</p>
+  <h3>Retries require idempotency</h3>
+  <p>Retrying a read is free. Retrying a write that already partially succeeded can double-charge, double-ship, or double-post. Any retry policy is implicitly a claim that the operation is safe to repeat, which is why idempotency keys and naturally idempotent operations are prerequisites for retries, not optional extras.</p>
+  <h3>The multiplication is the mechanism</h3>
+  <p>A single retrying layer turns N failures into up to N times the attempts. Two layers turn it into N squared. Because each layer measures success and failure locally, no layer sees the total call count it is helping to produce. The amplification is an emergent property of the chain, invisible from inside any one service.</p>
+
+  <h2>Concept Deep Dive</h2>
+  <h3>Metastable failure: the loop that sustains itself</h3>
+  <p>The dangerous case is not a spike that passes. It is a feedback loop. A dependency starts returning some errors. Its callers retry. The retries raise the arrival rate. The higher rate pushes the dependency past its capacity, so latency and error rate climb. The higher error rate produces still more retries. The system is now in a stable-but-bad state that no longer needs the original trigger to keep going: remove the initial fault and the retry load alone holds the outage open. This is a <em>metastable failure</em>, and it is why some outages do not end when the triggering event does.</p>
+
+  <figure class="terminal-shot">
+    <img src="../assets/diagrams/retry-metastable-loop.svg" alt="A four-node feedback cycle of errors, retries, rising arrival rate, and overload, with jitter, timeout budgets, and retry budgets cutting the cycle." />
+  </figure>
+
+  <h3>Synchronized retries and jitter</h3>
+  <p>When many callers fail at the same instant, a fixed backoff makes them all retry at the same later instant too. The result is a pulsing second wave, a thundering herd on a schedule. <em>Jitter</em> randomizes each backoff so the retries spread out instead of stacking. Full jitter, <code>sleep = random(0, base &times; 2^attempt)</code>, is the simplest form that works well: it keeps exponential growth on average while destroying the synchronization.</p>
+
+  <h3>Timeout budgets and deadline propagation</h3>
+  <p>A per-attempt timeout bounds one call. It does nothing to bound the total time a request spends being retried across a chain. A <em>timeout budget</em> is an end-to-end deadline set at the entry point and passed down with the request, shrinking as time is spent. Each hop checks the remaining budget before starting an attempt, and refuses to begin one it cannot finish in time. Doomed retries are never sent, and the tail latency of the whole chain is capped at the budget instead of at the sum of every hop's independent timeouts.</p>
+
+  <h3>Retry budgets</h3>
+  <p>The most direct defense treats retries as a scarce resource. A <em>retry budget</em> caps retries at a fraction of the request rate, commonly with a token bucket: each request adds a little budget, each retry spends some, and when the budget is empty retries are refused. During an isolated failure the budget is nearly full and retries proceed normally. During a broad failure, when everything is retrying at once, the budget empties and retries are throttled precisely when they would otherwise become the load. This is the Google SRE "retry budget", and it breaks the metastable loop at its source.</p>
+
+  <h3>Where circuit breakers fit</h3>
+  <p>A circuit breaker trips open when a dependency's error rate crosses a threshold, failing fast for a cool-off period instead of trying at all. It is a coarser, faster-acting cousin of the retry budget: the budget throttles retries smoothly, the breaker stops them abruptly. They compose, and which one matters more is workload-dependent; that trade-off is its own topic.</p>
+
+  <h2>Implementation Details</h2>
+  <ul>
+    <li><strong>Retry at one tier, not every tier.</strong> Pick a single layer to own retries and make the others fail fast. This alone collapses the multiplier from N-to-a-power back toward N.</li>
+    <li><strong>Always jitter backoff.</strong> Fixed or purely exponential backoff without randomization reintroduces synchronization.</li>
+    <li><strong>Propagate a deadline, not just a timeout.</strong> Carry the remaining budget in request metadata so every hop makes the same time-based decision.</li>
+    <li><strong>Cap retries as a ratio of traffic.</strong> A token-bucket retry budget is a few lines of code and is the single most effective guard against a storm.</li>
+    <li><strong>Only retry idempotent operations,</strong> or make them idempotent first with an idempotency key.</li>
+    <li><strong>Shed load as the escape hatch.</strong> When budgets are exhausted, rejecting requests quickly is healthier than accepting work you cannot complete.</li>
+  </ul>
+
+  <h2>Lab Evidence</h2>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/reliability/retry-storm"><code>labs/reliability/retry-storm</code></a>: a real HTTP chain <code>load &rarr; edge &rarr; api &rarr; backend</code>, with open-loop load offered below the degraded backend's capacity so that only amplification can push it over. The load reporter prints the amplification factor directly as backend calls divided by client requests.</p>
+  <div class="run-grid">
+    <div class="run-card"><h3><code>make break</code></h3><p>Naive: three blind attempts per hop, fixed backoff, no budget. Amplification climbs toward 9x and success collapses.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>Fixed: full jitter, an end-to-end timeout budget, and a 20% retry budget. Amplification stays near 1x and success recovers.</p></div>
+    <div class="run-card"><h3>reported metric</h3><p><code>AMPLIFICATION = backend calls / client requests</code>, measured, not asserted.</p></div>
+  </div>
+  <h3>Measured: the same chain, two retry policies</h3>
+  <p>Real run on 2026-07-08, 60 req/s offered for 20s against a backend degraded to 90 req/s capacity with a 40% base error rate:</p>
+  <pre><code>naive (storm):
+  succeeded:     273 / 1200 (22.8%)
+  backend calls: 8763
+  AMPLIFICATION: 7.30x
+  latency:       p50=1.879s  p99=1.884s
+
+fixed (budgeted):
+  succeeded:     921 / 1200 (76.8%)
+  backend calls: 1899
+  AMPLIFICATION: 1.58x
+  latency:       p50=10ms    p99=1.103s</code></pre>
+  <p>The fix improves every axis at once: success from 22.8% to 76.8%, backend load from 7.30x to 1.58x, and p50 latency from 1.88s to 10ms. The fixed p99 sits at ~1.1s because that is where the timeout budget caps it. The storm's exact numbers vary between runs because it is a stochastic feedback loop, but the separation is stable: blind retries collapse the chain, budgeted retries keep the backend under capacity so it stays healthy.</p>
+
+  <h2>Production Notes</h2>
+  <ul>
+    <li>Amplification is invisible from inside a single service. You need a chain-level view, request counts at each tier or a total-calls-per-user-request metric, to see it before an incident does.</li>
+    <li>Client libraries and service meshes often retry by default. Layered on top of application retries, those defaults are a hidden multiplier; audit them.</li>
+    <li>A retrying system needs its dependencies to fail fast and cheaply when overloaded. A dependency that holds connections open while dying makes every retry more expensive.</li>
+    <li>Test the storm deliberately. It appears only under concurrency against a degraded dependency, which is exactly the condition normal testing avoids.</li>
+  </ul>
+
+  <h2>Code Pointers</h2>
+  <table>
+    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/reliability/retry-storm/src/main.go"><code>src/main.go</code></a></td><td>The proxy retry loop, the token-bucket retry budget, deadline propagation, and the open-loop load generator.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/reliability/retry-storm/Makefile"><code>Makefile</code></a></td><td>The naive and fixed policies side by side as environment overrides; the only difference is jitter, budget, and retry budget.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Further Reading &amp; Watching</h2>
+  <ul class="source-list">
+    <li><a href="https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/">Timeouts, retries, and backoff with jitter</a> by Marc Brooker, AWS Builders' Library. The definitive practitioner treatment; the jitter used in the lab comes from here.</li>
+    <li><a href="https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/">Exponential Backoff And Jitter</a> by Marc Brooker. The original experiment comparing jitter strategies.</li>
+    <li><a href="https://sre.google/sre-book/handling-overload/">Handling Overload</a> and <a href="https://sre.google/sre-book/addressing-cascading-failures/">Addressing Cascading Failures</a>, Google SRE Book. Retry budgets and the anatomy of a cascade.</li>
+    <li><a href="https://sigops.org/s/conferences/hotos/2021/papers/hotos21-s11-bronson.pdf">Metastable Failures in Distributed Systems</a> by Bronson et al., HotOS '21. The formal frame for the feedback loop.</li>
+    <li><a href="https://brooker.co.za/blog/2022/02/16/circuit-breakers.html">Will circuit breakers solve my problems?</a> by Marc Brooker. Why budgets often beat breakers.</li>
+    <li>Book: Michael Nygard, <em>Release It!</em> Retry, Timeout, Circuit Breaker, and Bulkhead as named stability patterns.</li>
+  </ul>
+</main>
+
+</body>
+</html>
