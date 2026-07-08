@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 650" role="img" aria-labelledby="title desc">
+  <title id="title">Webhook HMAC verification flow</title>
+  <desc id="desc">A webhook provider signs timestamp, nonce, and raw request body with HMAC SHA-256. The receiver verifies the signature, checks timestamp freshness, checks nonce replay, then processes the event.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9ba7b4"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #e6edf3; }
+      .title { font-size: 28px; font-weight: 750; }
+      .label { font-size: 18px; font-weight: 700; }
+      .small { font-size: 15px; }
+      .tiny { font-size: 13px; }
+      .center { text-anchor: middle; }
+      .muted { fill: #9ba7b4; }
+      .box { fill: #161b22; stroke: #30363d; stroke-width: 2; rx: 12; }
+      .blue { fill: #142236; stroke: #58a6ff; }
+      .green { fill: #14251d; stroke: #56d364; }
+      .yellow { fill: #2a2416; stroke: #e3b341; }
+      .red { fill: #2d1b1e; stroke: #ff7b72; }
+      .line { stroke: #9ba7b4; stroke-width: 2.5; marker-end: url(#arrow); fill: none; }
+      .gate { fill: #101722; stroke: #30363d; stroke-width: 2; rx: 14; }
+    </style>
+  </defs>
+  <rect width="1120" height="650" fill="#0d1117"/>
+  <text class="title" x="44" y="54">HMAC-signed webhook request</text>
+  <text class="muted small" x="44" y="84">Signature proves body integrity. Timestamp and nonce make the signed request fresh.</text>
+
+  <rect class="box blue" x="54" y="185" width="180" height="110"/>
+  <text class="label center" x="144" y="224">Provider</text>
+  <text class="muted small center" x="144" y="252">knows shared secret</text>
+  <path class="line" d="M234 240 H318"/>
+
+  <rect class="box yellow" x="318" y="144" width="250" height="190"/>
+  <text class="label center" x="443" y="180">Signed input</text>
+  <text class="tiny" x="350" y="216">timestamp</text>
+  <text class="tiny" x="350" y="246">nonce</text>
+  <text class="tiny" x="350" y="276">raw request body</text>
+  <text class="muted tiny" x="350" y="310">HMAC-SHA256(secret, input)</text>
+  <path class="line" d="M568 240 H650"/>
+
+  <rect class="box blue" x="650" y="168" width="220" height="145"/>
+  <text class="label center" x="760" y="205">HTTP request</text>
+  <text class="muted tiny center" x="760" y="236">X-Webhook-Timestamp</text>
+  <text class="muted tiny center" x="760" y="260">X-Webhook-Nonce</text>
+  <text class="muted tiny center" x="760" y="284">X-Webhook-Signature</text>
+  <path class="line" d="M870 240 H950"/>
+
+  <rect class="box green" x="950" y="185" width="130" height="110"/>
+  <text class="label center" x="1015" y="224">Receiver</text>
+  <text class="muted tiny center" x="1015" y="252">verify before trust</text>
+
+  <rect class="gate" x="120" y="410" width="880" height="150"/>
+  <text class="label" x="154" y="448">Receiver checks</text>
+
+  <rect class="box green" x="170" y="480" width="170" height="58"/>
+  <text class="small center" x="255" y="503">constant-time</text>
+  <text class="small center" x="255" y="522">HMAC</text>
+  <path class="line" d="M340 509 H410"/>
+
+  <rect class="box green" x="410" y="480" width="170" height="58"/>
+  <text class="small center" x="495" y="515">timestamp window</text>
+  <path class="line" d="M580 509 H650"/>
+
+  <rect class="box green" x="650" y="480" width="160" height="58"/>
+  <text class="small center" x="730" y="515">nonce cache</text>
+  <path class="line" d="M810 509 H880"/>
+
+  <rect class="box green" x="880" y="480" width="90" height="58"/>
+  <text class="small center" x="925" y="515">process</text>
+
+  <rect class="box red" x="150" y="585" width="795" height="42"/>
+  <text class="small" x="180" y="612">Reject: bad signature, stale timestamp, or nonce already seen.</text>
+</svg>

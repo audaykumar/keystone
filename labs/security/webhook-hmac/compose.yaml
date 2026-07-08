@@ -1,0 +1,33 @@
+name: webhook-hmac
+
+x-driver: &driver
+  build:
+    context: ./src
+  image: webhook-hmac-driver:local
+
+services:
+  receiver:
+    <<: *driver
+    environment:
+      ROLE: server
+      WEBHOOK_SECRET: "${WEBHOOK_SECRET:-whsec_demo_secret_32_bytes_minimum}"
+      VERIFY_TIMESTAMP: "${VERIFY_TIMESTAMP:-true}"
+      VERIFY_NONCE: "${VERIFY_NONCE:-true}"
+      TOLERANCE_S: "${TOLERANCE_S:-300}"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  client:
+    <<: *driver
+    profiles: ["tools"]
+    environment:
+      ROLE: client
+      TARGET: "http://receiver:8080"
+      WEBHOOK_SECRET: "${WEBHOOK_SECRET:-whsec_demo_secret_32_bytes_minimum}"
+      SCENARIO: "${SCENARIO:-valid}"
+    depends_on:
+      receiver:
+        condition: service_healthy

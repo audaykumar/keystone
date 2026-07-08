@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Webhook HMAC Signatures | keystone</title>
+  <link rel="stylesheet" href="../assets/topic.css" />
+  <link rel="stylesheet" href="../assets/diagrams.css" />
+</head>
+<body>
+<div id="site-nav"></div>
+<script src="../components/nav.js?v=logo1"></script>
+
+<main>
+  <div class="crumbs"><a href="../index.html">keystone</a><span>/</span><span>Security and Auth</span></div>
+  <h1>Webhook HMAC Signatures and Replay Protection</h1>
+  <p class="subtitle">A signed webhook lets a receiver verify that the sender knew a shared secret and that the request body was not changed. Replay protection adds freshness, so an old valid request cannot be accepted again.</p>
+
+  <h2>TLDR</h2>
+  <div class="callout">
+    <strong>Quick brief</strong>
+    <ul class="tldr-list">
+      <li><strong>Sign the raw bytes:</strong> compute HMAC over the exact request body plus signed metadata. Do not verify a parsed and re-serialized JSON object.</li>
+      <li><strong>Use constant-time comparison:</strong> compare decoded MAC bytes with a constant-time function, not normal string equality.</li>
+      <li><strong>Bind freshness into the signature:</strong> timestamp and nonce should be part of the signed string, not trusted as unsigned headers.</li>
+      <li><strong>Store nonces or event ids:</strong> HMAC alone accepts a captured valid request again. Timestamp window plus nonce cache rejects replay.</li>
+    </ul>
+  </div>
+
+  <h2>Mental Model</h2>
+  <p>HMAC is a keyed checksum. Both sides know the same secret. The sender computes a MAC over a canonical string and sends the MAC with the request. The receiver recomputes the MAC over the bytes it actually received. If the MACs match, the request came from someone with the secret and the signed bytes were not changed.</p>
+  <p>That is integrity, not freshness. A captured request still has a valid MAC tomorrow unless the signed data includes time and uniqueness. The usual receiver boundary is: verify MAC, check timestamp tolerance, check nonce or event id, then process the event.</p>
+  <figure class="terminal-shot">
+    <img src="../assets/diagrams/webhook-hmac-flow.svg" alt="Webhook HMAC flow showing provider signing timestamp, nonce, and raw body, then receiver checking HMAC, timestamp window, and nonce cache before processing." />
+  </figure>
+
+  <h2>Ground-Up Explanation</h2>
+  <h3>What HMAC proves</h3>
+  <p>HMAC-SHA256 takes a secret key and a message, then produces a fixed-size MAC. Without the key, an attacker should not be able to produce the correct MAC for a changed message. This is why webhook signatures protect against body tampering and fake senders, assuming the shared secret stays secret.</p>
+
+  <h3>What HMAC does not prove</h3>
+  <p>HMAC does not know whether a message is new. If an attacker captures a valid signed request and sends the same bytes again, the MAC still verifies. Freshness has to be part of the protocol: a timestamp limits how long a request can be reused, and a nonce or event id prevents reuse inside that window.</p>
+
+  <h3>Why raw body matters</h3>
+  <p>JSON has multiple byte representations for the same object. Whitespace, key order, escaping, and number formatting can change without changing the parsed value. If the sender signs raw bytes but the receiver verifies a parsed object, the receiver is checking different data. Read the body once, verify those bytes, then parse it.</p>
+
+  <h2>Concept Deep Dive</h2>
+  <h3>Signed string</h3>
+  <p>A simple signed string is:</p>
+  <pre><code>timestamp + "." + nonce + "." + raw_body</code></pre>
+  <p>The dots are not security-critical; they only make field boundaries unambiguous. The important part is that every value used for freshness is inside the MAC. If timestamp or nonce are unsigned, an attacker can edit them while keeping the old body signature.</p>
+
+  <h3>Timestamp tolerance</h3>
+  <p>The receiver should reject timestamps outside a small tolerance window. The window needs to allow normal clock skew and delivery delay, but not long-term reuse. Five minutes is common for general webhooks. Higher-risk actions can use a shorter window when both sides have reliable clocks.</p>
+
+  <h3>Nonce and event-id storage</h3>
+  <p>A nonce is a unique delivery id. Store it at least as long as the timestamp tolerance window. If the same nonce appears again, reject it as replay. In systems that already have durable idempotency records, the provider's event id can do the same job and also protect business effects from duplicate delivery.</p>
+
+  <h3>Constant-time compare</h3>
+  <p>Normal equality can return as soon as it finds the first differing byte. In some settings, that timing can leak how many bytes matched. Constant-time comparison checks all bytes before returning. Decode both MACs to bytes, require equal length, then use the language's constant-time compare function.</p>
+
+  <h2>Implementation Details</h2>
+  <ul>
+    <li><strong>Reject missing signature metadata:</strong> timestamp, nonce, and signature should all be required.</li>
+    <li><strong>Keep secrets out of code:</strong> load the webhook secret from the runtime environment or secret manager.</li>
+    <li><strong>Support versioned signatures:</strong> a prefix such as <code>v1=</code> lets you rotate algorithms or signing formats later.</li>
+    <li><strong>Separate replay protection from idempotency:</strong> replay protection rejects duplicate signed deliveries at the edge; idempotency keeps internal effects safe.</li>
+    <li><strong>Rotate secrets with overlap:</strong> accept old and new secrets during rotation, then remove the old secret after providers have switched.</li>
+  </ul>
+
+  <h2>Lab Evidence</h2>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/security/webhook-hmac"><code>labs/security/webhook-hmac</code></a>: a Go webhook receiver and client. The insecure mode verifies HMAC only. The secure mode verifies HMAC, timestamp tolerance, and nonce replay.</p>
+  <div class="run-grid">
+    <div class="run-card"><h3><code>make break</code></h3><p>HMAC-only receiver accepts the same signed request twice.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>Secure receiver accepts valid delivery and rejects tampered, stale, and replayed delivery.</p></div>
+    <div class="run-card"><h3><code>make tamper / stale / replay</code></h3><p>Run each failure case independently against the secure receiver.</p></div>
+  </div>
+  <h3>Measured output (2026-07-08)</h3>
+  <pre><code>make break:
+  replay-vulnerable first:  got=200 want=200 accepted event: evt-replay
+  replay-vulnerable second: got=200 want=200 accepted event: evt-replay
+
+make test:
+  valid:          got=200 want=200 accepted event: evt-valid
+  tamper:         got=401 want=401 bad signature
+  stale:          got=401 want=401 timestamp outside tolerance
+  replay first:   got=200 want=200 accepted event: evt-replay
+  replay second:  got=409 want=409 replay detected</code></pre>
+
+  <h2>Production Notes</h2>
+  <ul>
+    <li>Use HTTPS as the transport. HMAC does not hide the body; it only authenticates it.</li>
+    <li>Log verification failures carefully. Do not log secrets or full signatures; short prefixes are enough for debugging.</li>
+    <li>Store nonce or event id in shared durable storage when receivers run as multiple instances. In-memory storage works only for a single-process lab.</li>
+    <li>Design the downstream handler to be idempotent anyway. Providers can retry valid deliveries after network failures.</li>
+  </ul>
+
+  <h2>Code Pointers</h2>
+  <table>
+    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/security/webhook-hmac/src/main.go"><code>src/main.go</code></a></td><td>Receiver and client: signing string, constant-time compare, timestamp check, nonce cache, and scenarios.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/security/webhook-hmac/Makefile"><code>Makefile</code></a></td><td>Secure and insecure receiver modes plus focused failure targets.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/security/webhook-hmac/compose.yaml"><code>compose.yaml</code></a></td><td>Dockerized receiver and client with the secret supplied through environment.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Further Reading &amp; Watching</h2>
+  <ul class="source-list">
+    <li><a href="https://docs.stripe.com/webhooks/signature">Stripe docs: webhook signature verification</a>.</li>
+    <li><a href="https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries">GitHub docs: validating webhook deliveries</a>.</li>
+    <li><a href="https://api.slack.com/authentication/verifying-requests-from-slack">Slack docs: verifying requests from Slack</a>.</li>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc2104">RFC 2104: HMAC</a>.</li>
+  </ul>
+</main>
+
+</body>
+</html>
