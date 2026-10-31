@@ -35,7 +35,7 @@ Choose the project whose core invariant naturally exposes the concept. Do not fo
 
 Example projects:
 
-- `projects/ledger/`: transactions, money correctness, idempotency, outbox, sagas, and reconciliation
+- `projects/warehouse/`: inventory correctness, order fulfillment, reservations, idempotency, outbox, sagas, and reconciliation
 - `projects/chat/`: realtime delivery, ordering, presence, fan-out, and offline messages
 - `projects/job-runner/`: queues, leases, retries, fencing, and durable execution
 
@@ -138,7 +138,7 @@ These are defaults, not restrictions. Use another language when it materially im
 | 2 | Kafka internals, delivery semantics, and idempotency |
 | 3 | Redis and message queues |
 | 4 | Consistency, consensus, time, ordering, locks, and partitioning |
-| 5 | Failure engineering, distributed transactions, reconciliation, and ledger design |
+| 5 | Failure engineering, distributed transactions, reconciliation, and warehouse fulfillment design |
 | 6 | Queueing theory and durable execution |
 
 Fintech topics are interleaved where they naturally affect a project.
@@ -234,6 +234,7 @@ Completed documentation:
 - `docs/postgres/overview.html`: standalone PostgreSQL overview and request-flow visual
 - `docs/postgres/lost-update.html`: interactive warehouse-stock lost-update explainer for the concurrency lab
 - `docs/postgres/migrations.html`: zero-downtime migrations with measured lock-queue outage evidence
+- `docs/postgres/wal-cdc.html`: WAL, logical decoding, replication slots, `restart_lsn` vs `confirmed_flush_lsn`, `max_slot_wal_keep_size`, and REPLICA IDENTITY, with measured on-disk WAL retention evidence
 - `docs/kafka/overview.html`: Kafka internals: partitions, ISR, acks contract, consumer groups
 - `docs/kafka/outbox.html`: transactional outbox + CDC with measured dual-write loss evidence
 - `docs/delivery-semantics/overview.html`: delivery semantics and idempotent consumers with measured balance evidence
@@ -258,6 +259,11 @@ teardown confirmed):
 - `labs/postgres/migrations/`: zero-downtime migrations. Measured: 28.0s
   lock-queue outage vs 1.03s worst-case with `lock_timeout`; batched
   backfill; NOT VALID, VALIDATE, SET NOT NULL; CREATE INDEX CONCURRENTLY.
+- `labs/postgres/wal-cdc/`: logical decoding with `test_decoding`. Measured:
+  uncommitted rows stay hidden (asserted); a stalled slot pins ~190MB of
+  `pg_wal` against a 64MB `max_wal_size`; `restart_lsn` moves only after a
+  running-xacts record plus consumer confirmation; `max_slot_wal_keep_size`
+  invalidates the slot (`wal_status=lost`); REPLICA IDENTITY DEFAULT vs FULL.
 - `labs/kafka/internals/`: 3-broker KRaft cluster, keyed produce, consumer
   groups, sequence audit. Happy path measured (incl. a 3x hot-partition skew
   from 10 keys on 6 partitions); the broker-kill acks=1 loss scenario is
@@ -318,9 +324,11 @@ storm, circuit breaker/bulkhead/load shedding), and the RabbitMQ DLQ/redelivery
 lab are implemented, measured, and documented. Messaging next: SQS visibility
 timeout, FIFO vs standard queues, and redrive policies. Or continue with:
 
-1. Start `projects/ledger/`: the Python multi-currency ledger, thin first
-   slice: accounts + single-currency transfer, Postgres, migrations, Docker
-   lifecycle contract. Pair with fintech topic F1 (money data correctness).
+1. Start `projects/warehouse/`: the Python warehouse-management system, thin
+   first slice: products, stock locations, inventory reservations, order
+   fulfillment state, Postgres, migrations, and Docker lifecycle contract.
+   Pair with correctness topics around inventory movement, idempotency, and
+   reconciliation.
 2. Run and capture the `labs/kafka/internals` broker-kill acks=1 loss
    scenario (`make break` + `make kill` + `make audit`) and add the evidence
    to the README and `docs/kafka/overview.html`.
