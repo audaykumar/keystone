@@ -277,13 +277,16 @@ teardown confirmed):
 - `labs/redis/cli/`: redis-cli drill scripts (cache, ratelimit, lock,
   streams, pubsub, zset), all verified.
 - `labs/reliability/retry-storm/`: real HTTP chain (load -> edge -> api ->
-  backend), open-loop load, backend with a rate-based capacity model. Measured
-  the metastable storm: naive blind retries 7.30x amplification / 22.8% success
-  / p50 1.88s; fixed (jitter + timeout budget + 20% retry budget) 1.58x / 76.8%
-  / p50 10ms. Concept page + 2 SVG diagrams (amplification tree, metastable
-  loop). NOTE: open-loop load is essential; closed-loop workers self-throttle
-  and hide the storm. Offered rate must sit below degraded capacity so only
-  amplification tips it over.
+  backend), open-loop load, backend with a rate-based capacity model.
+  Historical run (before inherited-deadline correction): naive blind retries
+  7.30x amplification / 22.8% success / p50 1.88s; fixed (jitter + timeout
+  budget + per-hop retry budget) 1.58x / 76.8% / p50 10ms. Corrected fixed
+  policy: 1.55x / 77.7%. `make recovery` removes degradation mid-run: 44%
+  success before removal, 100% after, so persistence was not observed in this
+  configuration. Concept page + 2 SVG diagrams (amplification tree, metastable
+  loop). NOTE: open-loop load preserves the offered arrival rate; closed-loop
+  load also shows amplification but self-throttles new requests. Offered rate
+  must sit below degraded capacity so only amplification tips it over.
 - `labs/security/webhook-hmac/`: HMAC-signed webhook receiver/client.
   Demonstrates HMAC-only replay acceptance vs secure HMAC + timestamp + nonce
   rejection of tamper, stale timestamp, and replay.
