@@ -63,6 +63,7 @@ services:
       RATE: "${RATE:-60}"
       DURATION_S: "${DURATION_S:-20}"
       LABEL: "${LABEL:-run}"
+      RECOVER_AFTER_S: "${RECOVER_AFTER_S:-0}"
     depends_on:
       edge:
         condition: service_started

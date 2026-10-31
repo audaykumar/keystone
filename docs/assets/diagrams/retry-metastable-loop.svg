@@ -22,7 +22,7 @@
   </defs>
   <rect width="1100" height="620" fill="#0d1117"/>
   <text class="title" x="44" y="54">The metastable loop: retries feed the outage that causes them</text>
-  <text class="muted small" x="44" y="84">The loop persists after the original trigger is gone. It only stops when load is actively shed.</text>
+  <text class="muted small" x="44" y="84">If the loop persists after the trigger is gone it is metastable, and recovery needs a corrective change.</text>
 
   <!-- four nodes of the cycle -->
   <rect class="bad" x="410" y="130" width="280" height="70" rx="12"/>

@@ -161,8 +161,9 @@ func loadPolicy() policy {
 	}
 }
 
-// retryBucket caps retries as a fraction of requests. Every request adds one
-// token; every retry spends `1/ratio` tokens. When the bucket is empty, retries
+// retryBucket budgets retries per hop. Every request adds
+// `ratio` tokens; every retry spends one token. An initial 100-token burst is
+// allowed. When the bucket is empty, retries
 // are refused, so a storm cannot grow retries without bound.
 type retryBucket struct {
 	mu     sync.Mutex
@@ -210,23 +211,40 @@ func runProxy(role string) {
 	bucket := newRetryBucket(pol.retryBudget)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/work", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/work", proxyHandler(role, pol, downstream, client, bucket))
+	serve(mux)
+}
+
+func proxyHandler(role string, pol policy, downstream string, client *http.Client, bucket *retryBucket) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		bucket.request()
 
 		// End-to-end deadline: use the caller's if present, else start ours.
 		remaining := pol.deadline
+		budgetEnabled := pol.deadline > 0
 		if hdr := r.Header.Get("X-Deadline-Ms"); hdr != "" {
 			if ms, err := strconv.Atoi(hdr); err == nil {
 				remaining = time.Duration(ms) * time.Millisecond
+				budgetEnabled = true
 			}
 		}
 		start := time.Now()
 
+		if budgetEnabled && remaining <= 0 {
+			http.Error(w, "deadline exhausted", http.StatusGatewayTimeout)
+			return
+		}
+		ctx := r.Context()
+		if budgetEnabled {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, remaining)
+			defer cancel()
+		}
 		var lastCode int
 		for attempt := 1; attempt <= pol.attempts; attempt++ {
 			if attempt > 1 {
 				// Budget check: do not retry if the end-to-end time is spent.
-				if pol.deadline > 0 && time.Since(start) >= remaining {
+				if budgetEnabled && time.Since(start) >= remaining {
 					break
 				}
 				if !bucket.allowRetry() {
@@ -236,11 +254,16 @@ func runProxy(role string) {
 				if pol.jitter {
 					sleep = time.Duration(rand.Int64N(int64(sleep) + 1)) // full jitter
 				}
-				time.Sleep(sleep)
+				select {
+				case <-time.After(sleep):
+				case <-ctx.Done():
+					http.Error(w, "deadline exhausted", http.StatusGatewayTimeout)
+					return
+				}
 			}
 
 			budgetLeft := remaining - time.Since(start)
-			code, err := callDownstream(client, downstream, pol, remaining, budgetLeft, start)
+			code, err := callDownstream(ctx, client, downstream, pol, budgetEnabled, remaining, budgetLeft, start)
 			if err == nil && code == http.StatusOK {
 				io.WriteString(w, role+":ok")
 				return
@@ -251,14 +274,13 @@ func runProxy(role string) {
 			lastCode = http.StatusServiceUnavailable
 		}
 		http.Error(w, role+":downstream failed", lastCode)
-	})
-	serve(mux)
+	}
 }
 
-func callDownstream(client *http.Client, downstream string, pol policy, remaining, budgetLeft time.Duration, start time.Time) (int, error) {
+func callDownstream(parent context.Context, client *http.Client, downstream string, pol policy, budgetEnabled bool, remaining, budgetLeft time.Duration, start time.Time) (int, error) {
 	timeout := pol.attemptTimeout
 	// If an end-to-end budget is set, never wait longer than what is left.
-	if pol.deadline > 0 {
+	if budgetEnabled {
 		if budgetLeft <= 0 {
 			return http.StatusGatewayTimeout, fmt.Errorf("budget exhausted")
 		}
@@ -266,11 +288,11 @@ func callDownstream(client *http.Client, downstream string, pol policy, remainin
 			timeout = budgetLeft
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, downstream+"/work", nil)
-	if pol.deadline > 0 {
+	if budgetEnabled {
 		// Propagate the shrinking budget so the next hop sees the truth.
 		pass := remaining - time.Since(start)
 		req.Header.Set("X-Deadline-Ms", strconv.Itoa(int(pass.Milliseconds())))
@@ -292,19 +314,38 @@ func runLoad() {
 	target := getenv("TARGET", "http://edge:8080")
 	backend := getenv("BACKEND", "http://backend:8080")
 	// Open-loop: fire at a fixed arrival rate regardless of how slow responses
-	// get. This is the honest model for user traffic, and the only one that
-	// shows a retry storm: closed-loop workers self-throttle when latency
-	// climbs, hiding the collapse. The offered rate is set BELOW the degraded
+	// get. This is the honest model for user traffic, so offered traffic does not self-throttle as latency rises.
+	// Closed-loop tests can also show amplification, but change the arrival rate. The offered rate is set BELOW the degraded
 	// backend's capacity, so only amplification can push it over the edge.
 	rate := getenvInt("RATE", 70)
 	duration := time.Duration(getenvInt("DURATION_S", 20)) * time.Second
 	label := getenv("LABEL", "run")
+	recoverAfter := time.Duration(getenvInt("RECOVER_AFTER_S", 0)) * time.Second
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	http.Get(backend + "/reset")
-	http.Get(backend + "/degrade?on=true")
+	if err := control(client, backend+"/reset"); err != nil {
+		panic(err)
+	}
+	if err := control(client, backend+"/degrade?on=true"); err != nil {
+		panic(err)
+	}
 	fmt.Printf("[%s] backend degraded; offering %d req/s for %s\n", label, rate, duration)
 
+	var recovered atomic.Bool
+	var postOK, postFail, preOK, preFail atomic.Int64
+	var recoveryFailed atomic.Bool
+	if recoverAfter > 0 && recoverAfter < duration {
+		go func() {
+			time.Sleep(recoverAfter)
+			if err := control(client, backend+"/degrade?on=false"); err != nil {
+				recoveryFailed.Store(true)
+				fmt.Fprintf(os.Stderr, "trigger removal failed: %v\n", err)
+				return
+			}
+			recovered.Store(true)
+			fmt.Printf("trigger removed at %s; offered traffic continues\n", recoverAfter)
+		}()
+	}
 	var ok, fail atomic.Int64
 	var mu sync.Mutex
 	var lats []time.Duration
@@ -329,13 +370,24 @@ func runLoad() {
 			defer wg.Done()
 			defer func() { <-guard }()
 			t := time.Now()
+			postRecovery := recovered.Load()
 			resp, err := client.Get(target + "/work")
 			d := time.Since(t)
 			if err == nil && resp.StatusCode == http.StatusOK {
 				ok.Add(1)
+				if postRecovery {
+					postOK.Add(1)
+				} else {
+					preOK.Add(1)
+				}
 				resp.Body.Close()
 			} else {
 				fail.Add(1)
+				if postRecovery {
+					postFail.Add(1)
+				} else {
+					preFail.Add(1)
+				}
 				if resp != nil {
 					resp.Body.Close()
 				}
@@ -348,7 +400,9 @@ func runLoad() {
 	wg.Wait()
 
 	backendCalls := fetchInt(client, backend+"/stats")
-	http.Get(backend + "/degrade?on=false")
+	if err := control(client, backend+"/degrade?on=false"); err != nil {
+		panic(err)
+	}
 
 	total := ok.Load() + fail.Load()
 	sort.Slice(lats, func(i, j int) bool { return lats[i] < lats[j] })
@@ -373,6 +427,14 @@ func runLoad() {
 	fmt.Printf("  failed:          %d\n", fail.Load())
 	fmt.Printf("backend calls:     %d\n", backendCalls)
 	fmt.Printf("AMPLIFICATION:     %.2fx  (backend calls / client requests)\n", amp)
+	if recoverAfter > 0 {
+		if recoveryFailed.Load() || !recovered.Load() {
+			fmt.Fprintln(os.Stderr, "INVALID recovery experiment: trigger removal was not confirmed")
+			os.Exit(1)
+		}
+		fmt.Printf("pre-removal new requests:  ok=%d failed=%d (started before the trigger was removed)\n", preOK.Load(), preFail.Load())
+		fmt.Printf("post-removal new requests: ok=%d failed=%d (includes recovery transient; not a steady-state proof)\n", postOK.Load(), postFail.Load())
+	}
 	fmt.Printf("client latency:    p50=%s p99=%s\n", p(0.50), p(0.99))
 }
 
@@ -423,4 +485,16 @@ func getenvFloat(k string, def float64) float64 {
 		}
 	}
 	return def
+}
+
+func control(client *http.Client, url string) error {
+	resp, err := client.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("control %s: HTTP %d", url, resp.StatusCode)
+	}
+	return nil
 }

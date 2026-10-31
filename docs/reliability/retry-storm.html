@@ -21,14 +21,14 @@
     <strong>Quick brief</strong>
     <ul class="tldr-list">
       <li><strong>Retries multiply, they do not add:</strong> three attempts at each of two hops is up to nine calls at the bottom, not six.</li>
-      <li><strong>A slow dependency plus blind retries is a feedback loop:</strong> errors cause retries, retries raise load, load causes more errors. This is a metastable failure, and it persists after the original fault is gone.</li>
+      <li><strong>A slow dependency plus blind retries is a feedback loop:</strong> errors cause retries, retries raise load, load causes more errors. This can become metastable if the bad state persists after the original fault is removed.</li>
       <li><strong>Bound the wait, not just the count:</strong> a timeout budget propagated down the chain stops a hop from starting an attempt it cannot finish in time.</li>
       <li><strong>Cap retries as a fraction of traffic:</strong> a retry budget lets retries help during isolated failures but refuses to let them become the load during a broad one.</li>
     </ul>
   </div>
 
   <h2>Mental Model</h2>
-  <p>Think of a request passing through several layers, each of which retries its next hop on failure. Retries at one layer are independent of retries at the layers above, so the attempt counts compound. If every layer retries up to three times, one user request can become nine calls at the bottom of the stack. The deeper and more aggressive the retry configuration, the larger the multiplier.</p>
+  <p>Think of a request passing through two retrying layers. Three total attempts at each layer can produce up to nine calls at the bottom. Additional layers compound that multiplier. Retries at one tier avoid this multiplication; budgets bound how much extra work failures can create.</p>
   <p>That multiplier is harmless when the dependency is healthy and has spare capacity. It becomes dangerous at exactly the moment retries are most tempting: when the dependency is already struggling. Then the amplified load is aimed straight at the thing least able to absorb it.</p>
 
   <figure class="terminal-shot">
@@ -39,13 +39,13 @@
   <h3>Why retry at all</h3>
   <p>Failures come in two flavors. A <em>transient</em> failure, a dropped packet, a brief leader election, a single overloaded node, will likely succeed on a second attempt, so retrying is correct. A <em>persistent</em> failure, a bad request, a dependency that is down hard, will fail again no matter how many times you try, so retrying only wastes work. The trouble is that a caller usually cannot tell which one it is looking at, and the safe-seeming default, "retry a few times," treats every failure as transient.</p>
   <h3>Retries require idempotency</h3>
-  <p>Retrying a read is free. Retrying a write that already partially succeeded can double-charge, double-ship, or double-post. Any retry policy is implicitly a claim that the operation is safe to repeat, which is why idempotency keys and naturally idempotent operations are prerequisites for retries, not optional extras.</p>
+  <p>A side-effect-free read can be safe to repeat, but retries still consume capacity. Retrying a write that already partially succeeded can double-charge, double-ship, or double-post. Any retry policy is implicitly a claim that the operation is safe to repeat, which is why idempotency keys and naturally idempotent operations are prerequisites for retries, not optional extras.</p>
   <h3>The multiplication is the mechanism</h3>
   <p>A single retrying layer turns N failures into up to N times the attempts. Two layers turn it into N squared. Because each layer measures success and failure locally, no layer sees the total call count it is helping to produce. The amplification is an emergent property of the chain, invisible from inside any one service.</p>
 
   <h2>Concept Deep Dive</h2>
   <h3>Metastable failure: the loop that sustains itself</h3>
-  <p>The dangerous case is not a spike that passes. It is a feedback loop. A dependency starts returning some errors. Its callers retry. The retries raise the arrival rate. The higher rate pushes the dependency past its capacity, so latency and error rate climb. The higher error rate produces still more retries. The system is now in a stable-but-bad state that no longer needs the original trigger to keep going: remove the initial fault and the retry load alone holds the outage open. This is a <em>metastable failure</em>, and it is why some outages do not end when the triggering event does.</p>
+  <p>The dangerous case is not a spike that passes. It is a feedback loop. A dependency starts returning some errors. Its callers retry. The retries raise the arrival rate. The higher rate pushes the dependency past its capacity, so latency and error rate climb. The higher error rate produces still more retries. The system can settle into a stable-but-bad state that no longer needs the original trigger. If removing the initial fault does not end the overload because the retry load alone holds it open, the failure is <em>metastable</em>, which is why some outages do not end when the triggering event does. Whether a given configuration does this has to be observed; this lab's recovery run did not.</p>
 
   <figure class="terminal-shot">
     <img src="../assets/diagrams/retry-metastable-loop.svg" alt="A four-node feedback cycle of errors, retries, rising arrival rate, and overload, with jitter, timeout budgets, and retry budgets cutting the cycle." />
@@ -55,7 +55,7 @@
   <p>When many callers fail at the same instant, a fixed backoff makes them all retry at the same later instant too. The result is a pulsing second wave, a thundering herd on a schedule. <em>Jitter</em> randomizes each backoff so the retries spread out instead of stacking. Full jitter, <code>sleep = random(0, base &#215; 2^attempt)</code>, is the simplest form that works well: it keeps exponential growth on average while destroying the synchronization.</p>
 
   <h3>Timeout budgets and deadline propagation</h3>
-  <p>A per-attempt timeout bounds one call. It does nothing to bound the total time a request spends being retried across a chain. A <em>timeout budget</em> is an end-to-end deadline set at the entry point and passed down with the request, shrinking as time is spent. Each hop checks the remaining budget before starting an attempt, and refuses to begin one it cannot finish in time. Doomed retries are never sent, and the tail latency of the whole chain is capped at the budget instead of at the sum of every hop's independent timeouts.</p>
+  <p>A per-attempt timeout bounds one call. It does nothing to bound the total time a request spends being retried across a chain. A <em>timeout budget</em> is an end-to-end deadline set at the entry point and passed down with the request, shrinking as time is spent. Each hop checks the remaining budget, refuses work after expiry, bounds each attempt by the remaining time, and propagates cancellation. A deadline does not predict whether an attempt will succeed. Retries are not started after expiry, and the tail latency of the whole chain is capped at the budget instead of at the sum of every hop's independent timeouts.</p>
 
   <h3>Retry budgets</h3>
   <p>The most direct defense treats retries as a scarce resource. A <em>retry budget</em> caps retries at a fraction of the request rate, commonly with a token bucket: each request adds a little budget, each retry spends some, and when the budget is empty retries are refused. During an isolated failure the budget is nearly full and retries proceed normally. During a broad failure, when everything is retrying at once, the budget empties and retries are throttled precisely when they would otherwise become the load. This is the Google SRE "retry budget", and it breaks the metastable loop at its source.</p>
@@ -81,11 +81,11 @@
   <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/reliability/retry-storm"><code>labs/reliability/retry-storm</code></a>: a real HTTP chain <code>load &#8594; edge &#8594; api &#8594; backend</code>, with open-loop load offered below the degraded backend's capacity so that only amplification can push it over. The load reporter prints the amplification factor directly as backend calls divided by client requests.</p>
   <div class="run-grid">
     <div class="run-card"><h3><code>make break</code></h3><p>Naive: three blind attempts per hop, fixed backoff, no budget. Amplification climbs toward 9x and success collapses.</p></div>
-    <div class="run-card"><h3><code>make test</code></h3><p>Fixed: full jitter, an end-to-end timeout budget, and a 20% retry budget. Amplification stays near 1x and success recovers.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>Fixed: full jitter, an end-to-end timeout budget, and a per-hop retry budget. Amplification stays near 1x and success recovers.</p></div>
     <div class="run-card"><h3>reported metric</h3><p><code>AMPLIFICATION = backend calls / client requests</code>, measured, not asserted.</p></div>
   </div>
   <h3>Measured: the same chain, two retry policies</h3>
-  <p>Real run on 2026-07-08, 60 req/s offered for 20s against a backend degraded to 90 req/s capacity with a 40% base error rate:</p>
+  <p>Historical run on 2026-07-08, before inherited-deadline enforcement was corrected, 60 req/s offered for 20s against a backend degraded to 90 req/s capacity with a 40% base error rate:</p>
   <pre><code>naive (storm):
   succeeded:     273 / 1200 (22.8%)
   backend calls: 8763
@@ -97,7 +97,34 @@ fixed (budgeted):
   backend calls: 1899
   AMPLIFICATION: 1.58x
   latency:       p50=10ms    p99=1.103s</code></pre>
-  <p>The fix improves every axis at once: success from 22.8% to 76.8%, backend load from 7.30x to 1.58x, and p50 latency from 1.88s to 10ms. The fixed p99 sits at ~1.1s because that is where the timeout budget caps it. The storm's exact numbers vary between runs because it is a stochastic feedback loop, but the separation is stable: blind retries collapse the chain, budgeted retries keep the backend under capacity so it stays healthy.</p>
+  <p>The historical comparison shows retry amplification and improved outcomes under the combined policy. Its continuously degraded run did not demonstrate persistence after trigger removal, and its API hop did not enforce inherited deadlines. The corrected implementation enforces inherited budgets and cancellation. <code>make recovery</code> removes degradation while offered traffic continues; whether a bad state persists must be observed rather than assumed. Historical numbers above are not measurements of the corrected implementation.</p>
+
+  <h3>Recheck: remove the trigger while traffic continues (2026-10-31)</h3>
+  <p>Naive policy, 60 req/s for 24s, degradation removed at 12s. Blank lines are removed; values are unedited.</p>
+  <pre><code>[trigger removal (naive policy)] backend degraded; offering 60 req/s for 24s
+trigger removed at 12s; offered traffic continues
+=== trigger removal (naive policy) ===
+client requests:   1440
+  succeeded:       1039 (72.2%)
+  failed:          401
+backend calls:     2582
+AMPLIFICATION:     1.79x  (backend calls / client requests)
+pre-removal new requests:  ok=319 failed=401 (started before the trigger was removed)
+post-removal new requests: ok=720 failed=0 (includes recovery transient; not a steady-state proof)
+client latency:    p50=10ms p99=1.888s</code></pre>
+  <p>Requests started before removal succeeded 319 of 720 times (44.3%). Every one of the 720 requests started after removal succeeded. In this configuration the bad state did not persist once the trigger was gone, so this run is not an example of a metastable failure; the longer or higher-load variants that might sustain one were not tried. The post-removal counts include the recovery transient and are not a steady-state benchmark.</p>
+
+  <h3>Recheck: corrected inherited deadline, continuously degraded backend (2026-10-31)</h3>
+  <p>Corrected fixed policy, 60 req/s for 20s, backend continuously degraded. Blank lines are removed; values are unedited.</p>
+  <pre><code>[fixed (budgeted)] backend degraded; offering 60 req/s for 20s
+=== fixed (budgeted) ===
+client requests:   1200
+  succeeded:       932 (77.7%)
+  failed:          268
+backend calls:     1862
+AMPLIFICATION:     1.55x  (backend calls / client requests)
+client latency:    p50=10ms p99=1.104s</code></pre>
+  <p>Retry buckets are per hop: each request adds 0.2 token, each retry spends one, with a 100-token initial burst. The 0.2 refill is not a global 20% amplification bound. This is one local run.</p>
 
   <h2>Production Notes</h2>
   <ul>

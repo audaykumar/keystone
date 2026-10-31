@@ -2,7 +2,7 @@ FROM golang:1.23-alpine AS build
 WORKDIR /app
 COPY go.mod ./
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -o /driver .
+RUN go test ./... && CGO_ENABLED=0 go build -trimpath -o /driver .
 
 FROM alpine:3.20
 RUN adduser -D -u 10001 app

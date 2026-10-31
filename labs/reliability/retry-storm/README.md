@@ -11,8 +11,8 @@ and a retry budget.
 A real request chain over HTTP: `load -> edge -> api -> backend`. `edge` and
 `api` are retrying proxies; `backend` is a dependency whose capacity can be
 dropped to simulate lost nodes. Load is **open-loop**: a fixed arrival rate that
-does not slow down when responses do, which is the only load model that exposes
-a storm (closed-loop workers self-throttle as latency climbs and hide it).
+does not slow down when responses do, which preserves offered arrival rate as latency rises. Closed-loop tests can
+also show amplification, but their new-request rate self-throttles.
 
 The offered rate is set *below* the degraded backend's capacity, so the load
 itself is survivable. Only amplification can push the backend over the edge.
@@ -21,7 +21,7 @@ itself is survivable. Only amplification can push the backend over the edge.
 |---|---|---|
 | edge | 3 attempts, fixed backoff | 3 attempts, full jitter |
 | api | 3 attempts, fixed backoff | 3 attempts, full jitter |
-| both | no budget, no cap | 800-1100ms end-to-end budget + 20% retry budget |
+| both | no budget, no cap | 1100ms end-to-end budget at the edge (inherited by api) + per-hop retry budget |
 
 Worst-case amplification is 3 x 3 = 9 backend calls per user request.
 
@@ -32,9 +32,11 @@ Worst-case amplification is 3 x 3 = 9 backend calls per user request.
 3. Higher rate pushes the backend past capacity: latency and errors climb.
 4. More errors cause more retries. Go to 2.
 
-The system had enough capacity for the real traffic. The retries, not the
-traffic, are what sustain the outage. That is a metastable failure: it persists
-even after the original trigger is gone, until load is actively shed.
+The offered traffic is below degraded capacity; retries can push it into
+overload. The original experiment kept degradation active throughout traffic,
+so it demonstrated amplification, not persistence after trigger removal.
+`make recovery` (naive policy) removes degradation after 12s while traffic continues for 24s.
+Observe recovery or sustained failure before calling a run metastable.
 
 ## Commands
 
@@ -42,6 +44,7 @@ even after the original trigger is gone, until load is actively shed.
 make up      # bring the chain up (naive policy)
 make break   # storm: blind retries against a degraded backend
 make test    # fix: jitter + timeout budget + retry budget
+make recovery # naive policy; remove degradation mid-run and watch recovery
 make logs    # follow all service logs
 make down    # full teardown (containers, network, image)
 ```
@@ -49,7 +52,10 @@ make down    # full teardown (containers, network, image)
 `make break` and `make test` each recreate the two proxies with the right
 policy, run the open-loop load, and print the amplification factor.
 
-## Measured results (2026-07-08)
+## Historical results (2026-07-08, before inherited-deadline correction)
+
+The old API parsed but did not enforce the inherited budget. These numbers
+are retained as historical observations, not measurements of the corrected code.
 
 Offered load 60 req/s for 20s; degraded backend capacity 90 req/s with a 40%
 base error rate; both hops 3 attempts.
@@ -73,8 +79,8 @@ fixed (budgeted):
 The fix wins on every axis at once: success 22.8% -> 76.8%, backend load 7.30x
 -> 1.58x, p50 latency 1.88s -> 10ms. The storm's exact numbers vary run to run
 (it is a stochastic feedback loop), but the separation is stable: blind retries
-collapse the chain, budgeted retries keep the backend under capacity so it stays
-healthy.
+collapse the chain, the combined policy reduced amplification. These aggregates do not prove
+that capacity was never exceeded at any instant.
 
 ## What each part of the fix does
 
@@ -82,12 +88,14 @@ healthy.
   failed at the same instant retries at the same instant: a synchronized second
   wave. `sleep = random(0, base * 2^attempt)`.
 - **Timeout budget (deadline propagation).** The edge sets an end-to-end
-  deadline and passes the shrinking remainder down via a header. A hop will not
-  start an attempt it cannot finish in time, so doomed retries are never sent.
-  This is also why fixed p99 sits at ~1.1s: the budget caps it.
-- **Retry budget.** A token bucket caps retries at a fraction (20%) of requests.
-  When failures spike, retries are allowed to rise only so far, which breaks the
-  feedback loop at its source. This is the Google SRE "retry budget".
+  deadline and passes the shrinking remainder down via a header. Each hop enforces inherited time remaining, clips attempt timeouts to it,
+  and propagates cancellation. It cannot predict whether a live attempt will succeed.
+  The historical edge p99 was near its local budget; it did not prove
+  that the API enforced inherited time remaining.
+- **Retry budget.** A per-hop token bucket: each request adds 0.2 token, each
+  retry spends one, with a 100-token initial burst. When failures spike, retries
+  are allowed to rise only so far, which breaks the feedback loop at its source.
+  This is the Google SRE "retry budget".
 
 Any one of these helps; together they convert collapse into degraded-but-serving.
 
@@ -97,8 +105,8 @@ Any one of these helps; together they convert collapse into degraded-but-serving
   attempt ceiling: the backend is slow because it is being hammered by the very
   retries meant to route around its slowness.
 - In `make test`, amplification stays near 1x-1.6x and p50 drops back to single
-  digits: the backend was never pushed over capacity, so most first attempts
-  simply succeed.
+  digits: the combined policy reduced retry load in the historical run. The
+  aggregate ratio alone does not prove capacity was never exceeded.
 - Retries belong at one level, not every level. Retrying at edge and api
   multiplies; picking a single retry tier and making the others fail fast is
   often the biggest single win.
@@ -114,3 +122,40 @@ Any one of these helps; together they convert collapse into degraded-but-serving
 - Marc Brooker, [Will circuit breakers solve my problems?](https://brooker.co.za/blog/2022/02/16/circuit-breakers.html) — why budgets often beat breakers (the next lab)
 - Kyle Kingsbury / AWS, and Google SRE ch. on load shedding — graceful degradation as the escape hatch
 - Book: *Release It!*, Michael Nygard — Retry, Timeout, Circuit Breaker, and Bulkhead as named stability patterns
+
+## Trigger-removal recheck (2026-10-31)
+
+Naive policy, 60 req/s for 24s, degradation removed at 12s. Blank lines are removed; values are unedited.
+
+```text
+[trigger removal (naive policy)] backend degraded; offering 60 req/s for 24s
+trigger removed at 12s; offered traffic continues
+=== trigger removal (naive policy) ===
+client requests:   1440
+  succeeded:       1039 (72.2%)
+  failed:          401
+backend calls:     2582
+AMPLIFICATION:     1.79x  (backend calls / client requests)
+pre-removal new requests:  ok=319 failed=401 (started before the trigger was removed)
+post-removal new requests: ok=720 failed=0 (includes recovery transient; not a steady-state proof)
+client latency:    p50=10ms p99=1.888s
+```
+
+Requests started before removal succeeded 319 of 720 times (44.3%). Every one of the 720 requests started after removal succeeded. In this configuration the bad state did not persist once the trigger was gone, so this run is not an example of a metastable failure; the longer or higher-load variants that might sustain one were not tried. The post-removal counts include the recovery transient and are not a steady-state benchmark.
+
+## Corrected fixed-policy recheck (2026-10-31)
+
+Corrected fixed policy, 60 req/s for 20s, backend continuously degraded. Blank lines are removed; values are unedited.
+
+```text
+[fixed (budgeted)] backend degraded; offering 60 req/s for 20s
+=== fixed (budgeted) ===
+client requests:   1200
+  succeeded:       932 (77.7%)
+  failed:          268
+backend calls:     1862
+AMPLIFICATION:     1.55x  (backend calls / client requests)
+client latency:    p50=10ms p99=1.104s
+```
+
+Retry buckets are per hop: each request adds 0.2 token, each retry spends one, with a 100-token initial burst. The 0.2 refill is not a global 20% amplification bound. This is one local run.
