@@ -60,7 +60,7 @@ test: build ## acks=all + min.insync.replicas=2; same kill, no acked loss
 audit: build ## Scan this completed run; report missing acknowledged IDs and failed sends
 	$(COMPOSE) run --rm --no-deps driver -mode=audit -topic=$(TOPIC)
 
-kill: ## Stop broker 2 (partition leaders fail over)
+kill: ## Gracefully stop broker 2 (controlled shutdown moves its partition leaders)
 	$(COMPOSE) stop kafka2
 	@echo "kafka2 stopped. run 'make describe' and watch leadership + ISR shrink."
 

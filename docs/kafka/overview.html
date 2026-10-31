@@ -85,7 +85,7 @@
     <div class="run-card"><h3><code>make test</code></h3><p>acks=all under the same kill: audit compares the log with exact acknowledged IDs in the completed run manifest. Failed sends are reported separately.</p></div>
     <div class="run-card"><h3><code>make consume</code> ×2</h3><p>Two group members: watch the coordinator split 6 partitions 3/3, then hand them back when one leaves.</p></div>
   </div>
-  <h3>Measured: happy path and partition skew</h3>
+  <h3>Measured: happy path and partition skew (original audit format)</h3>
   <p>Verified on 2026-07-07: the 3-broker cluster forms, leaders spread across brokers, and a 600-message keyed produce audits clean (600 unique sequences, 0 duplicates, 0 missing). The audit's per-partition counts taught something the page did not plan to: 10 keys hashed onto 6 partitions gave two partitions 180 messages and the rest 60, a 3x hot-partition skew from key cardinality alone.</p>
   <pre><code>partition 0: 60   partition 1: 60   partition 2: 60
 partition 3: 60   partition 4: 180  partition 5: 180
@@ -93,7 +93,7 @@ unique sequences found: 600, duplicates: 0, missing: 0 => exit 0</code></pre>
   <p>The <code>make break</code> broker-kill loss window is scripted but not yet captured; its evidence will be added after a recorded run.</p>
 
   <h3>Recheck: acknowledged IDs during broker failure (2026-10-31)</h3>
-  <p>A 600-attempt <code>acks=all</code> run with <code>make kill</code> issued about five seconds in, so broker 2 stopped mid-run. Build output, per-second progress lines, and blank lines are removed; values are unedited.</p>
+  <p>A 600-attempt <code>acks=all</code> run with <code>make kill</code> issued about five seconds in. <code>make kill</code> is <code>docker compose stop kafka2</code>, a graceful stop: the broker runs controlled shutdown and hands its partition leadership to other replicas before it exits, so this is not a crash test. Make banner text, build output, per-second progress lines, and blank lines are removed; values are unedited.</p>
   <pre><code>done: acked=600 failed=0
 manifest saved: run=386214e2965c25275d57ab8c attempted=600 acked=600 failed=0
 audit: topic=payments run=386214e2965c25275d57ab8c attempted=600 acked=600 failed=0 failed_present=0
@@ -107,7 +107,7 @@ audit: topic=payments run=386214e2965c25275d57ab8c attempted=600 acked=600 faile
   duplicates: 0
   missing: 0
 RESULT: every acknowledged sequence is present; failed sends are separate. exit 0</code></pre>
-  <p>No send failed and no duplicate appeared: leader election on the surviving replicas kept writes succeeding, and the audit compared the log with this run's own manifest. An earlier run that showed failed sends and retry duplicates was not reproduced in two fresh runs and its raw output was not kept, so it is not quoted here. This run does not capture the <code>acks=1</code> loss window.</p>
+  <p>No send failed and no duplicate appeared: a graceful stop of one broker did not interrupt writes. A graceful stop also makes the <code>acks=1</code> loss window much less likely to appear; testing a crash would need <code>docker compose kill</code>. The audit compared the log with this run's own manifest. An earlier run that showed failed sends and retry duplicates was not reproduced in two fresh runs and its raw output was not kept, so it is not quoted here. This run does not capture the <code>acks=1</code> loss window.</p>
 
   <h2>Production Notes</h2>
   <ul>

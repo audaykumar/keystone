@@ -79,7 +79,9 @@ Driver commands run with `--no-deps`, so they never start or restart a broker
 (otherwise `make audit` would bring a killed broker back). Run `make up` first;
 broker 2 stays down after `make kill` until `make revive`.
 
-## Measured results (2026-07-07)
+## Measured results (2026-07-07, original audit format)
+
+These runs predate the manifest audit: sequences were counted without a run ID.
 
 Verified end to end: cluster formation, topic creation, keyed produce, and
 the partition audit.
@@ -118,8 +120,11 @@ evidence has not been captured yet; run it and record the audit output here.
 ## Recheck (2026-10-31)
 
 A 600-attempt `acks=all` run (`COUNT=600 make test`) with `make kill` issued about
-five seconds in, so broker 2 stopped mid-run. Real output; build output, the
-per-second progress lines, and blank lines are removed, values unedited:
+five seconds in. `make kill` is `docker compose stop kafka2`, a graceful stop: the
+broker runs controlled shutdown and hands its partition leadership to other
+replicas before it exits, so this is not a crash test. Real output; make banner
+text, build output, the per-second progress lines, and blank lines are removed,
+values unedited:
 
 ```text
 done: acked=600 failed=0
@@ -138,12 +143,14 @@ RESULT: every acknowledged sequence is present; failed sends are separate. exit 
 ```
 
 No send failed and no duplicate appeared: with `acks=all` and
-`min.insync.replicas=2`, leader election on the surviving replicas kept writes
-succeeding. The audit compared the log with this run's own manifest. An earlier
+`min.insync.replicas=2`, a graceful stop of one broker did not interrupt writes.
+A graceful stop also makes the acks=1 loss window much less likely to appear;
+testing a crash would need `docker compose kill`. The audit compared the log with this run's own manifest. An earlier
 recheck that showed failed sends and retry duplicates was not reproduced in two
 fresh runs and its raw output was not kept, so it is not quoted. This run does
 not capture the acks=1 loss window.
 
-The producer sustains about 33 messages per second because every write waits
-for its acks, far below the `-rate=1000` flag, so the default 20,000-message run
-takes about ten minutes. Use `COUNT=600`.
+The producer sustains about 33 messages per second, far below the `-rate=1000`
+flag, so the default 20,000-message run takes about ten minutes. It issues one
+synchronous write per message and the writer holds a partial batch for its 20ms
+`BatchTimeout`, which is most of each write's latency. Use `COUNT=600`.
