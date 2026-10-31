@@ -4,12 +4,14 @@ This lab shows the PostgreSQL side of CDC without Debezium in front of it. It
 uses logical decoding and the built-in `test_decoding` output plugin so the WAL
 mechanics are visible directly. Consumers here are the SQL functions
 `pg_logical_slot_get_changes` and `pg_logical_slot_peek_changes`, so the slot is
-never `active`; a real connector holds the slot open through a walsender.
+active only during each decoding call; idle inspections show `active = false`.
+A real connector holds the slot open through a walsender.
 
 ## What This Proves
 
-- Logical decoding emits committed changes only. Rows from an open transaction
-  are held back even after their WAL has been flushed.
+- Buffered SQL decoding used here emits committed changes. Rows from an open
+  transaction are held back even after their WAL has been flushed. Streaming
+  plugins can send tentative changes before commit, followed by commit or abort.
 - A replication slot pins WAL on disk: with the consumer stalled, `pg_wal`
   stays well above `max_wal_size` after a checkpoint.
 - `restart_lsn` is what pins WAL, and it does not move just because the
@@ -80,6 +82,19 @@ Written from the lab design before the final runs.
 - `make identity`: DEFAULT shows the new tuple for UPDATE and the primary key
   only for DELETE. FULL shows the whole old row for both.
 
+## Lifecycle recheck (2026-10-31)
+
+After reconciling with the merged WAL lab, `make -j4 reset test break cap identity`
+and separate `make test` and `make break` invocations passed. Every scenario
+resets its own slot and baseline rows, even when requested in one invocation;
+the shared database lifecycle runs serially under parallel make.
+
+The test observed zero open-transaction rows and one flushed probe before the
+commit barrier was released. Exact five-record and six-record decoding checks,
+including BEGIN/COMMIT markers, passed. Break passed its on-disk retention and
+release assertions; cap reached `wal_status=lost` and rejected consumption;
+identity completed DEFAULT and FULL comparisons.
+
 ## Measured Output
 
 All outputs below are unedited runs. Lines removed are only `Expanded display
@@ -88,7 +103,8 @@ slot on PostgreSQL 17.2; LSNs and timings differ per run.
 
 ### `make test`
 
-The open transaction has inserted (`backend_xid` is set) and then holds open.
+The open transaction has inserted (`backend_xid` is set) and then waits at a commit
+barrier: the test keeps its psql input open and sends COMMIT only after the peek.
 `pg_logical_emit_message(..., flush => true)` writes a non-transactional probe
 after the open transaction's records and flushes all earlier WAL. Seeing the
 probe in the peek while `open_tx_rows` is 0 shows the decoder read past the
@@ -97,19 +113,19 @@ before the transaction, even though its LSN is higher: output follows commit
 order, not WAL position.
 
 ```text
- slot_name  |    lsn    
+ slot_name  |    lsn
 ------------+-----------
  orders_cdc | 0/194ABA8
 (1 row)
 
 == WAL CDC test: only committed changes leave the slot ==
-A transaction inserts an order, holds open, then commits.
+A transaction inserts an order, waits at a commit barrier, then commits.
 The slot is peeked only after the open transaction has provably written.
 
 >> open transaction state (backend_xid set means it has written):
- application_name | state  | backend_xid 
-------------------+--------+-------------
- wal-cdc-open-tx  | active |         744
+ application_name |        state        | backend_xid
+------------------+---------------------+-------------
+ wal-cdc-open-tx  | idle in transaction |         744
 (1 row)
 
 >> before COMMIT, peeking the slot:
@@ -118,36 +134,51 @@ The slot is peeked only after the open transaction has provably written.
             0 | 1
 
 >> after COMMIT, consuming decoded WAL (probe message first, then the transaction):
-0/194D388 | 0 | message: transactional: 0 prefix: cdc-probe, sz: 13 content:before-commit
-0/194CF68 | 744 | BEGIN 744
-0/194CFD0 | 744 | table public.orders: INSERT: id[bigint]:1 order_ref[text]:'ord-open' status[text]:'created' total_cents[integer]:4200 notes[text]:'' created_at[timestamp with time zone]:'2026-10-31 06:33:47.803143+00'
-0/194D1E8 | 744 | table public.order_events: INSERT: id[bigint]:1 order_ref[text]:'ord-open' event_type[text]:'OrderCreated' payload[jsonb]:'{"source": "open-tx"}' created_at[timestamp with time zone]:'2026-10-31 06:33:47.803143+00'
-0/194D3B8 | 744 | COMMIT 744
+SELECT 5
+    lsn    | xid |                                                                                                          data
+-----------+-----+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 0/194D388 |   0 | message: transactional: 0 prefix: cdc-probe, sz: 13 content:before-commit
+ 0/194CFD0 | 744 | BEGIN 744
+ 0/194CFD0 | 744 | table public.orders: INSERT: id[bigint]:1 order_ref[text]:'ord-open' status[text]:'created' total_cents[integer]:4200 notes[text]:'' created_at[timestamp with time zone]:'2026-10-31 07:49:09.141322+00'
+ 0/194D1E8 | 744 | table public.order_events: INSERT: id[bigint]:1 order_ref[text]:'ord-open' event_type[text]:'OrderCreated' payload[jsonb]:'{"source": "open-tx"}' created_at[timestamp with time zone]:'2026-10-31 07:49:09.141322+00'
+ 0/194D3B8 | 744 | COMMIT 744
+(5 rows)
+
+ assertion_passed
+------------------
+                1
+(1 row)
 
 >> a committed multi-row transaction is decoded as one ordered unit:
-    lsn    | xid |                                                                                                       data                                                                                                        
+SELECT 6
+    lsn    | xid |                                                                                                       data
 -----------+-----+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- 0/194D3B8 | 745 | BEGIN 745
- 0/194D3B8 | 745 | table public.orders: INSERT: id[bigint]:2 order_ref[text]:'ord-2' status[text]:'created' total_cents[integer]:1100 notes[text]:'' created_at[timestamp with time zone]:'2026-10-31 06:33:56.016867+00'
- 0/194D498 | 745 | table public.orders: INSERT: id[bigint]:3 order_ref[text]:'ord-3' status[text]:'created' total_cents[integer]:1200 notes[text]:'' created_at[timestamp with time zone]:'2026-10-31 06:33:56.016867+00'
- 0/194D578 | 745 | table public.order_events: INSERT: id[bigint]:2 order_ref[text]:'ord-2' event_type[text]:'OrderCreated' payload[jsonb]:'{"source": "batch"}' created_at[timestamp with time zone]:'2026-10-31 06:33:56.016867+00'
- 0/194D630 | 745 | table public.order_events: INSERT: id[bigint]:3 order_ref[text]:'ord-3' event_type[text]:'OrderCreated' payload[jsonb]:'{"source": "batch"}' created_at[timestamp with time zone]:'2026-10-31 06:33:56.016867+00'
- 0/194D788 | 745 | COMMIT 745
+ 0/1955718 | 747 | BEGIN 747
+ 0/1955718 | 747 | table public.orders: INSERT: id[bigint]:2 order_ref[text]:'ord-2' status[text]:'created' total_cents[integer]:1100 notes[text]:'' created_at[timestamp with time zone]:'2026-10-31 07:49:09.662796+00'
+ 0/19557F8 | 747 | table public.orders: INSERT: id[bigint]:3 order_ref[text]:'ord-3' status[text]:'created' total_cents[integer]:1200 notes[text]:'' created_at[timestamp with time zone]:'2026-10-31 07:49:09.662796+00'
+ 0/19558D8 | 747 | table public.order_events: INSERT: id[bigint]:2 order_ref[text]:'ord-2' event_type[text]:'OrderCreated' payload[jsonb]:'{"source": "batch"}' created_at[timestamp with time zone]:'2026-10-31 07:49:09.662796+00'
+ 0/1955990 | 747 | table public.order_events: INSERT: id[bigint]:3 order_ref[text]:'ord-3' event_type[text]:'OrderCreated' payload[jsonb]:'{"source": "batch"}' created_at[timestamp with time zone]:'2026-10-31 07:49:09.662796+00'
+ 0/1955AE8 | 747 | COMMIT 747
 (6 rows)
+
+ assertion_passed
+------------------
+                1
+(1 row)
 
 >> slot after the test:
 -[ RECORD 1 ]---------+------------------------------
 slot_name             | orders_cdc
 active                | f
-inactive_since        | 2026-10-31 06:33:56.107587+00
+inactive_since        | 2026-10-31 07:49:09.758767+00
 wal_status            | reserved
-invalidation_reason   | 
+invalidation_reason   |
 restart_lsn           | 0/194AB70
-confirmed_flush_lsn   | 0/194D788
+confirmed_flush_lsn   | 0/1955AE8
 catalog_xmin          | 742
-wal_since_restart_lsn | 11 kB
-consumer_lag          | 0 bytes
-safe_wal_size         | 
+wal_since_restart_lsn | 72 kB
+consumer_lag          | 28 kB
+safe_wal_size         |
 
 PASS: uncommitted rows invisible before COMMIT, decoded after.
 ```
@@ -155,7 +186,7 @@ PASS: uncommitted rows invisible before COMMIT, decoded after.
 ### `make break`
 
 ```text
- slot_name  |    lsn    
+ slot_name  |    lsn
 ------------+-----------
  orders_cdc | 0/194D7C0
 (1 row)
@@ -179,13 +210,13 @@ slot_name             | orders_cdc
 active                | f
 inactive_since        | 2026-10-31 06:33:57.101723+00
 wal_status            | reserved
-invalidation_reason   | 
+invalidation_reason   |
 restart_lsn           | 0/194D788
 confirmed_flush_lsn   | 0/194FAF0
 catalog_xmin          | 746
 wal_since_restart_lsn | 9272 bytes
 consumer_lag          | 208 bytes
-safe_wal_size         | 
+safe_wal_size         |
 
 >> 2. writing ~160MB while nobody consumes the slot
 batches=15 rows=150000 wal_written=167 MB (target 160 MB)
@@ -206,19 +237,19 @@ slot_name             | orders_cdc
 active                | f
 inactive_since        | 2026-10-31 06:33:57.101723+00
 wal_status            | extended
-invalidation_reason   | 
+invalidation_reason   |
 restart_lsn           | 0/194D788
 confirmed_flush_lsn   | 0/194FAF0
 catalog_xmin          | 746
 wal_since_restart_lsn | 167 MB
 consumer_lag          | 167 MB
-safe_wal_size         | 
+safe_wal_size         |
 
 PASS: pg_wal above max_wal_size, nothing removed, wal_status=extended
 
 >> 4. consume the slot (logical_decoding_work_mem=1MB so the reorder buffer spills)
 SET
- decoded_rows 
+ decoded_rows
 --------------
        150030
 (1 row)
@@ -228,15 +259,15 @@ slot_name             | orders_cdc
 active                | f
 inactive_since        | 2026-10-31 06:34:02.495698+00
 wal_status            | extended
-invalidation_reason   | 
+invalidation_reason   |
 restart_lsn           | 0/194FB10
 confirmed_flush_lsn   | 0/C083320
 catalog_xmin          | 748
 wal_since_restart_lsn | 167 MB
 consumer_lag          | 0 bytes
-safe_wal_size         | 
+safe_wal_size         |
 
- slot_name  | spill_txns | spill_count | spill_bytes 
+ slot_name  | spill_txns | spill_count | spill_bytes
 ------------+------------+-------------+-------------
  orders_cdc |         15 |         165 | 153 MB
 (1 row)
@@ -251,13 +282,13 @@ slot_name             | orders_cdc
 active                | f
 inactive_since        | 2026-10-31 06:34:03.274792+00
 wal_status            | reserved
-invalidation_reason   | 
+invalidation_reason   |
 restart_lsn           | 0/C083358
 confirmed_flush_lsn   | 0/C083390
 catalog_xmin          | 763
 wal_since_restart_lsn | 56 bytes
 consumer_lag          | 0 bytes
-safe_wal_size         | 
+safe_wal_size         |
 
 >> 6. now a checkpoint can remove or recycle the old segments
 checkpoint: 2026-10-31 06:34:03.604 UTC [54] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 6 removed, 3 recycled; write=0.001 s, sync=0.001 s, total=0.018 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=39732 kB; lsn=0/C0833E8, redo lsn=0/C083390
@@ -323,7 +354,7 @@ by a trap on exit, so it never leaks into other targets. In PostgreSQL 17 an
 invalidated slot has `restart_lsn = NULL`.
 
 ```text
- slot_name  |    lsn    
+ slot_name  |    lsn
 ------------+-----------
  orders_cdc | 0/C0835E0
 (1 row)
@@ -337,7 +368,7 @@ slot_name             | orders_cdc
 active                | f
 inactive_since        | 2026-10-31 06:32:32.907743+00
 wal_status            | reserved
-invalidation_reason   | 
+invalidation_reason   |
 restart_lsn           | 0/C0835A8
 confirmed_flush_lsn   | 0/C08CC20
 catalog_xmin          | 763
@@ -355,12 +386,12 @@ active                | f
 inactive_since        | 2026-10-31 06:32:35.496219+00
 wal_status            | lost
 invalidation_reason   | wal_removed
-restart_lsn           | 
+restart_lsn           |
 confirmed_flush_lsn   | 0/C08CC20
 catalog_xmin          | 763
-wal_since_restart_lsn | 
+wal_since_restart_lsn |
 consumer_lag          | 67 MB
-safe_wal_size         | 
+safe_wal_size         |
 
 >> 4. the consumer can no longer read the slot:
 ERROR:  can no longer get changes from replication slot "orders_cdc"
@@ -377,7 +408,7 @@ stream. It must run before the DML it should affect, because identity is
 applied when the row change is written to WAL.
 
 ```text
- slot_name  |    lsn     
+ slot_name  |    lsn
 ------------+------------
  orders_cdc | 0/10358960
 (1 row)

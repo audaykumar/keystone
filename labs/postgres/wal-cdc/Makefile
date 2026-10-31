@@ -5,6 +5,8 @@ SLOT    ?= orders_cdc
 PSQL = $(COMPOSE) exec -T postgres psql -X -v ON_ERROR_STOP=1
 RUN  = COMPOSE="$(COMPOSE)" PSQL_CMD="$(PSQL)" SLOT="$(SLOT)" sh
 
+.NOTPARALLEL:
+
 .PHONY: up migrate reset-slot seed test break cap identity lag wal consume slots psql logs down reset
 
 up: ## Start Postgres with logical WAL and apply schema
@@ -33,16 +35,20 @@ seed: ## Restore baseline state: identity, WAL cap, deterministic rows
 	@$(PSQL) -q -c "ALTER SYSTEM RESET max_slot_wal_keep_size" -c "SELECT pg_reload_conf()" >/dev/null
 	@$(PSQL) -q -c "TRUNCATE order_events, orders RESTART IDENTITY"
 
-test: reset-slot seed ## Only committed changes leave the slot
+test: ## Only committed changes leave the slot
+	@$(MAKE) reset-slot seed
 	@$(RUN) scripts/test.sh
 
-break: reset-slot seed ## Stalled consumer: writes continue, slot pins WAL on disk
+break: ## Stalled consumer: writes continue, slot pins WAL on disk
+	@$(MAKE) reset-slot seed
 	@$(RUN) scripts/break.sh
 
-cap: reset-slot seed ## max_slot_wal_keep_size caps retention by invalidating the slot
+cap: ## max_slot_wal_keep_size caps retention by invalidating the slot
+	@$(MAKE) reset-slot seed
 	@$(RUN) scripts/cap.sh
 
-identity: reset-slot seed ## REPLICA IDENTITY DEFAULT vs FULL for UPDATE/DELETE
+identity: ## REPLICA IDENTITY DEFAULT vs FULL for UPDATE/DELETE
+	@$(MAKE) reset-slot seed
 	@$(RUN) scripts/identity.sh
 
 lag: ## Show logical slot cursor, status, and consumer lag

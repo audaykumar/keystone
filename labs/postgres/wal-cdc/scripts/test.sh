@@ -3,19 +3,33 @@
 set -eu
 . scripts/lib.sh
 
-log=$(mktemp "${TMPDIR:-/tmp}/wal-cdc.XXXXXX")
-cleanup() { terminate_open_tx || true; rm -f "$log"; }
+work_dir=$(mktemp -d "${TMPDIR:-/tmp}/wal-cdc.XXXXXX")
+log="$work_dir/output"
+tx_pid=""
+cleanup() {
+  exec 3>&-
+  terminate_open_tx || true
+  if [ -n "$tx_pid" ]; then
+    kill "$tx_pid" 2>/dev/null || true
+    wait "$tx_pid" 2>/dev/null || true
+  fi
+  rm -f "$work_dir/input" "$log"
+  rmdir "$work_dir"
+}
 trap cleanup EXIT
 trap 'exit 1' INT TERM
 
 printf '\n== WAL CDC test: only committed changes leave the slot ==\n'
-printf 'A transaction inserts an order, holds open, then commits.\n'
+printf 'A transaction inserts an order, waits at a commit barrier, then commits.\n'
 printf 'The slot is peeked only after the open transaction has provably written.\n\n'
 
 discard
 
-( p -f - < scripts/open_transaction.sql > "$log" 2>&1 ) &
+mkfifo "$work_dir/input"
+( p -f - < "$work_dir/input" > "$log" 2>&1 ) &
 tx_pid=$!
+exec 3>"$work_dir/input"
+cat scripts/open_transaction.sql >&3
 
 ready=0
 for _ in $(seq 1 80); do
@@ -40,16 +54,18 @@ set -- $res
 printf ' open_tx_rows | probe_seen\n--------------+------------\n %12s | %s\n' "$1" "$2"
 [ "$res" = "0 1" ] || fail "expected '0 1' (open rows hidden, probe seen), got '$res'"
 
+printf 'COMMIT;\nSELECT pg_advisory_unlock(42, 4242);\n' >&3
+exec 3>&-
 wait "$tx_pid" || { cat "$log"; fail "open transaction failed"; }
+tx_pid=""
 
 printf '\n>> after COMMIT, consuming decoded WAL (probe message first, then the transaction):\n'
-out=$(p -qAt -F ' | ' -c "SELECT lsn, xid, data FROM pg_logical_slot_get_changes('$SLOT', NULL, NULL)")
-echo "$out"
-echo "$out" | grep -q 'ord-open' || fail "committed ord-open rows were not decoded"
+# One probe message plus BEGIN, two row changes, and COMMIT.
+pf assert_decoded.sql -v expected=5
 
 printf '\n>> a committed multi-row transaction is decoded as one ordered unit:\n'
 p -q -c "BEGIN; INSERT INTO orders(order_ref, status, total_cents) VALUES ('ord-2', 'created', 1100), ('ord-3', 'created', 1200); INSERT INTO order_events(order_ref, event_type, payload) VALUES ('ord-2', 'OrderCreated', '{\"source\":\"batch\"}'), ('ord-3', 'OrderCreated', '{\"source\":\"batch\"}'); COMMIT;"
-p -c "SELECT lsn, xid, data FROM pg_logical_slot_get_changes('$SLOT', NULL, NULL)"
+pf assert_decoded.sql -v expected=6
 
 printf '\n>> slot after the test:\n'
 pf lag.sql

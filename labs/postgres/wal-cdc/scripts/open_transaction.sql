@@ -12,8 +12,5 @@ VALUES ('ord-open', 'OrderCreated', '{"source":"open-tx"}');
 -- Session-level advisory lock taken after the inserts: its presence in
 -- pg_locks proves the inserts above have already executed.
 SELECT pg_advisory_lock(42, 4242);
-SELECT pg_sleep(8);
 
-COMMIT;
-
-SELECT pg_advisory_unlock(42, 4242);
+-- The test keeps stdin open and sends COMMIT only after its decoding probe.
