@@ -1169,10 +1169,10 @@
       <article class="tool-card" id="s3" data-category="platform">
         <div class="tool-head"><img class="tool-logo" src="assets/logos/s3.svg" alt=""><div class="tool-heading"><h3><a href="https://aws.amazon.com/s3/">S3-compatible storage</a></h3><span class="kind">Object storage</span></div><a class="official-link" href="https://aws.amazon.com/s3/">Official site ↗</a></div>
         <p class="tool-summary">Stores byte objects addressed by bucket and key, separate from a filesystem or relational schema.</p>
-        <div class="fact"><div class="fact-label">How it works</div><div>Clients PUT and GET complete objects. Metadata, versioning, lifecycle rules, multipart upload, replication, and access policy surround the object.</div></div>
+        <div class="fact"><div class="fact-label">How it works</div><div>Clients address objects by bucket and key; GET supports byte ranges and uploads can use multipart operations. Metadata, versioning, lifecycle rules, multipart upload, replication, and access policy surround the object.</div></div>
         <div class="fact"><div class="fact-label">Key concepts</div><div class="keys"><span class="key">bucket</span><span class="key">object key</span><span class="key">version</span><span class="key">multipart</span><span class="key">presigned URL</span><span class="key">lifecycle</span></div></div>
         <div class="fact"><div class="fact-label">Use for</div><div>Images, videos, documents, backups, archives, exports, and data lakes.</div></div>
-        <div class="fact"><div class="fact-label">Trade-off</div><div>Not a POSIX filesystem or query engine. Object updates replace the object rather than editing arbitrary blocks in place.</div></div>
+        <div class="fact"><div class="fact-label">Trade-off</div><div>Not a POSIX filesystem or query engine. General-purpose object updates replace the object rather than arbitrary in-place block writes; S3 Express directory buckets also support append operations.</div></div>
         <a class="back-to-tools" href="#tool-jump">Back to tool picker</a>
       </article>
 

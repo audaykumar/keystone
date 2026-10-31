@@ -65,7 +65,8 @@ INVALID index to drop — the price of not blocking writes.
 
 Adding a nullable column is catalog-only. The driver then fills it in batches
 of 5,000 with a 100ms pause, committing each batch, so no long transaction
-pins rows or bloats the lock table. `VALIDATE CONSTRAINT` scans under
+holds row locks for the whole backfill. Row-lock ownership is stored in tuple
+headers, not one shared heavyweight lock-table entry per modified row. `VALIDATE CONSTRAINT` scans under
 SHARE UPDATE EXCLUSIVE (reads and writes continue), and PostgreSQL 12+ turns
 `SET NOT NULL` into a catalog change when a valid CHECK constraint already
 proves the invariant.

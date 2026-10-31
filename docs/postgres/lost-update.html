@@ -274,7 +274,7 @@
       <tr>
         <td>I2</td>
         <td><code>available_stock &gt;= 0</code></td>
-        <td>Prevents accepting more reservations than the warehouse can fulfil.</td>
+        <td>Rejects negative stored availability. Preventing overselling also requires accurate movement accounting and an atomic reservation operation.</td>
       </tr>
     </table>
   </section>

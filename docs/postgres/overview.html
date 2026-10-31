@@ -498,7 +498,7 @@ sequenceDiagram
     <section id="rules">
       <h2>Practical Rules</h2>
       <ul style="padding-left: 20px; margin-bottom: 14px;">
-        <li>Keep transactions short. Their locks and snapshots live until the transaction ends.</li>
+        <li>Keep transactions short. Locks normally persist until transaction end. Read Committed uses statement snapshots; Repeatable Read and Serializable normally retain a transaction snapshot.</li>
         <li>Model money movement as balanced, atomic postings rather than direct balance mutations.</li>
         <li>Use database constraints and unique indexes for invariants that must survive concurrent requests.</li>
         <li>Treat every production migration as a locking operation.</li>
