@@ -106,8 +106,7 @@ Any one of these helps; together they convert collapse into degraded-but-serving
 - In `make break`, `AMPLIFICATION` climbs toward 9x and p50 pins near the
   attempt ceiling: the backend is slow because it is being hammered by the very
   retries meant to route around its slowness.
-- In `make test`, amplification stays near 1x-1.6x and p50 drops back to single
-  digits: the combined policy reduced retry load in the historical run. The
+- In `make test`, amplification stays at about 1.6x and p50 stays at 10-20ms: the combined policy reduced retry load in the historical run. The
   aggregate ratio alone does not prove capacity was never exceeded.
 - Retries belong at one level, not every level. Retrying at edge and api
   multiplies; picking a single retry tier and making the others fail fast is
@@ -140,7 +139,7 @@ AMPLIFICATION:     8.10x  (backend calls / client requests)
 client latency:    p50=1.883s p99=1.89s
 ```
 
-Blind retries at both hops drove 1200 requests to 9725 backend calls (8.10x) and 11.8% success, with every latency pinned near the 1.9s attempt ceiling. The historical run (2026-07-08) measured 22.8% success at 7.30x; the storm's exact numbers vary run to run.
+Blind retries at both hops drove 1200 requests to 9725 backend calls (8.10x) and 11.8% success, with both p50 and p99 near the 1.9s attempt ceiling. The historical run (2026-07-08) measured 22.8% success at 7.30x; the storm's exact numbers vary run to run.
 
 ## Trigger-removal recheck (2026-10-31)
 
@@ -160,7 +159,7 @@ post-removal new requests: ok=0 failed=720 (includes recovery transient; not a s
 client latency:    p50=1.883s p99=1.89s
 ```
 
-Requests started before removal succeeded 136 of 720 times (18.9%). After the trigger was removed, none of the 720 requests started succeeded (0 of 720) and latency stayed pinned near 1.9s: the amplified retry load (8.28x) kept the backend overloaded even though its degradation was gone. This is one run with the lab's fixed rates and capacities, so it shows the loop can sustain itself, not how often it does. An earlier recovery run, made while the naive policy was still cancelling orphaned downstream calls, recovered; that baseline was corrected and is now covered by a test.
+Requests started before removal succeeded 136 of 720 times (18.9%). After the trigger was removed, none of the 720 requests started succeeded (0 of 720). Run-wide p50 was 1.883s and amplification 8.28x, which suggests the amplified retry load kept the backend overloaded even though its degradation was gone. This is one run with the lab's fixed rates and capacities, so it shows the loop can sustain itself, not how often it does. The naive baseline must stay blind to caller cancellation; a test pins this.
 
 ## Corrected fixed-policy recheck (2026-10-31)
 
