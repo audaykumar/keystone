@@ -1,5 +1,6 @@
 COMPOSE := docker compose
 TOPIC   ?= payments
+COUNT   ?= 20000
 KCMD     = $(COMPOSE) exec kafka1 /opt/kafka/bin
 
 .PHONY: up topic describe build produce consume consume2 lag break test audit kill revive logs down reset
@@ -25,13 +26,13 @@ build: ## Build the Go driver image
 	$(COMPOSE) build driver
 
 produce: build ## 10k keyed messages, acks=all
-	$(COMPOSE) run --rm driver -mode=produce -count=10000 -rate=1000 -acks=all
+	$(COMPOSE) run --rm --no-deps driver -mode=produce -topic=$(TOPIC) -count=10000 -rate=1000 -acks=all
 
 consume: build ## Join the consumer group (run in its own terminal)
-	$(COMPOSE) run --rm driver -mode=consume -verbose
+	$(COMPOSE) run --rm --no-deps driver -mode=consume -verbose
 
 consume2: build ## Second group member: watch partitions move (rebalance)
-	$(COMPOSE) run --rm driver -mode=consume -verbose
+	$(COMPOSE) run --rm --no-deps driver -mode=consume -verbose
 
 lag: ## Consumer group state: members, assignments, lag per partition
 	$(KCMD)/kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
@@ -41,23 +42,23 @@ break: build ## acks=1 producer; kill a broker mid-run in another terminal
 	@printf "\n== Kafka break: acks=1 loss window ==\n"
 	@printf "What will happen: the producer treats leader-only acknowledgement as success.\n"
 	@printf "While this runs, execute 'make kill' in another terminal.\n"
-	@printf "Messages acked by the dead leader but not yet replicated are gone.\n"
-	@printf "Result to review: 'make audit' reports missing sequences and exits 1.\n\n"
-	$(COMPOSE) run --rm driver -mode=produce -count=20000 -rate=1000 -acks=one
+	@printf "A leader failure in the replication window can lose acknowledged messages.\n"
+	@printf "Result to review: 'make audit' compares only this run's acknowledged IDs; loss is not guaranteed.\n\n"
+	$(COMPOSE) run --rm --no-deps driver -mode=produce -topic=$(TOPIC) -count=$(COUNT) -rate=1000 -acks=one
 	$(MAKE) audit
 
 test: build ## acks=all + min.insync.replicas=2; same kill, no acked loss
 	@printf "\n== Kafka test: acks=all survives the same broker kill ==\n"
-	@printf "What will happen: acks require the full in-sync quorum, so a message is\n"
+	@printf "What will happen: acks wait for the full ISR, with min ISR gating availability, so a message is\n"
 	@printf "either acked and replicated, or it fails and the driver reports the error.\n"
 	@printf "Run 'make kill' in another terminal during this run too.\n"
 	@printf "Result to review: audit finds every acked sequence. Failed sends are\n"
 	@printf "visible errors, not silent loss.\n\n"
-	$(COMPOSE) run --rm driver -mode=produce -count=20000 -rate=1000 -acks=all
+	$(COMPOSE) run --rm --no-deps driver -mode=produce -topic=$(TOPIC) -count=$(COUNT) -rate=1000 -acks=all
 	$(MAKE) audit
 
-audit: build ## Scan all partitions; report unique/duplicate/missing sequences
-	$(COMPOSE) run --rm driver -mode=audit -count=20000
+audit: build ## Scan this completed run; report missing acknowledged IDs and failed sends
+	$(COMPOSE) run --rm --no-deps driver -mode=audit -topic=$(TOPIC)
 
 kill: ## Stop broker 2 (partition leaders fail over)
 	$(COMPOSE) stop kafka2
@@ -71,6 +72,6 @@ logs: ## Follow broker logs
 	$(COMPOSE) logs -f kafka1 kafka2 kafka3
 
 down: ## Remove containers, networks, volumes, and built images
-	$(COMPOSE) down -v --rmi local --remove-orphans
+	$(COMPOSE) --profile tools down -v --rmi local --remove-orphans
 
 reset: down up ## Tear down and rebuild clean

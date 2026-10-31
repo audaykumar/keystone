@@ -41,7 +41,7 @@
 
   <h3>Broker to consumer</h3>
   <p>The consumer side is about offset timing. Commit before processing gives at-most-once behavior: the message may be skipped after a crash. Commit after processing gives at-least-once behavior: the message may be replayed after a crash. Automatic commits are convenient but make the timing less explicit; manual commits force the application to choose where progress becomes durable.</p>
-  <p><code>auto.offset.reset</code> only applies when no committed offset exists. It is not a recovery policy for normal crashes. The normal recovery point is whatever offset was last committed to the broker's offset store.</p>
+  <p><code>auto.offset.reset</code> applies when no initial offset exists or the current offset is no longer available, such as after retention deletes that range. Normal crash recovery uses a valid committed offset. See <a href="https://kafka.apache.org/38/configuration/consumer-configs/#auto.offset.reset">the consumer setting</a>.</p>
 
   <h2>Concept Deep Dive</h2>
   <h3>Idempotency strategy catalog</h3>
@@ -63,7 +63,7 @@
   <p>Ordering is usually per key, not global. A version guard works well when every event for one entity is processed in order. Out-of-order redelivery complicates that guard: an old event can arrive after a newer one, and a naive "not seen before" check may apply stale work. For ordered workflows, include per-entity sequence numbers or expected-state guards so duplicates and stale messages are separate cases.</p>
 
   <h3>Kafka transactions and EOS boundary</h3>
-  <p>Kafka transactions can atomically write output records and commit consumed offsets. That makes consume-transform-produce pipelines exactly-once inside Kafka: either the transformed output and offset commit become visible together, or neither does. The boundary is any external side effect. A database row, email, payment-provider call, or HTTP mutation is not part of the Kafka transaction unless you add a separate idempotency or reconciliation mechanism.</p>
+  <p>Kafka transactions can atomically write output records and commit consumed offsets. With correct transaction handling and downstream <code>isolation.level=read_committed</code>, readers exclude aborted transactional output. Default <code>read_uncommitted</code> can expose records from aborted transactions, so transactions alone do not establish the reader-visible guarantee. External database, email, payment-provider, and HTTP effects remain outside the Kafka transaction. See <a href="https://kafka.apache.org/38/configuration/consumer-configs/#isolation.level">consumer isolation</a>.</p>
 
   <h3>Dedup retention and scope</h3>
   <p>Dedup state needs an explicit retention policy. It should cover the maximum replay horizon: broker retention, backup restore windows, manual replay habits, and connector retries. Scope the key to the effect. A globally unique event id is simple; <code>(consumer_name, event_id)</code> is safer when multiple consumers need to apply different effects from the same event.</p>

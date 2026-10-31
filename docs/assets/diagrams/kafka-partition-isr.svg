@@ -26,7 +26,7 @@
   </defs>
   <rect width="1120" height="660" fill="#0d1117"/>
   <text class="title" x="44" y="54">Kafka partition: leader, followers, ISR, high watermark</text>
-  <text class="muted small" x="44" y="84">Consumers read only committed offsets. acks=all waits for enough in-sync replicas.</text>
+  <text class="muted small" x="44" y="84">Consumers read only committed offsets. acks=all waits for the ISR; min ISR gates writes.</text>
 
   <rect class="box leader" x="170" y="150" width="760" height="112"/>
   <text class="label" x="198" y="184">Leader replica</text>

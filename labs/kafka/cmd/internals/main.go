@@ -1,15 +1,19 @@
 // Kafka internals lab driver.
 //
-// mode=produce  keyed, sequence-numbered messages at a fixed rate; counts acks
-//               and failures so a broker kill mid-produce is measurable.
-// mode=consume  consumer-group member; prints partition assignment activity so
-//               rebalances are visible when members join or leave.
-// mode=audit    scans every partition from the beginning and reports unique,
-//               duplicate, and missing sequence numbers.
+// mode=produce writes keyed, run-tagged, sequence-numbered messages at a fixed
+// rate and saves a manifest of acknowledged and failed IDs when the run ends.
+//
+// mode=consume joins a consumer group and prints partition assignment activity
+// so rebalances are visible when members join or leave.
+//
+// mode=audit reads the manifest, scans every partition from the beginning, and
+// reports missing acknowledged IDs, duplicates, and failed sends found in the log.
 package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -33,6 +37,7 @@ func main() {
 	acks := flag.String("acks", "all", "producer acks: one|all")
 	keys := flag.Int("keys", 10, "distinct message keys (accounts)")
 	group := flag.String("group", "lab-consumers", "consumer group id")
+	manifest := flag.String("manifest", "/evidence/run.json", "completed producer run manifest")
 	verbose := flag.Bool("verbose", false, "log group rebalance activity")
 	flag.Parse()
 
@@ -41,17 +46,28 @@ func main() {
 
 	switch *mode {
 	case "produce":
-		produce(ctx, brokers, *topic, *count, *rate, *acks, *keys)
+		produce(ctx, brokers, *topic, *count, *rate, *acks, *keys, *manifest)
 	case "consume":
 		consume(ctx, brokers, *topic, *group, *verbose)
 	case "audit":
-		audit(ctx, brokers, *topic, *count)
+		audit(ctx, brokers, *topic, *manifest)
 	default:
 		fatalf("unknown mode %q", *mode)
 	}
 }
 
-func produce(ctx context.Context, brokers []string, topic string, count, rate int, acks string, keys int) {
+func produce(ctx context.Context, brokers []string, topic string, count, rate int, acks string, keys int, manifestPath string) {
+	f, err := os.Create(manifestPath)
+	if err != nil {
+		fatalf("create manifest: %v", err)
+	}
+	defer f.Close()
+	var token [12]byte
+	if _, err := rand.Read(token[:]); err != nil {
+		fatalf("run id: %v", err)
+	}
+	run := runManifest{RunID: fmt.Sprintf("%x", token), Topic: topic, Attempted: count}
+
 	required := kafka.RequireAll
 	if acks == "one" {
 		required = kafka.RequireOne
@@ -76,13 +92,15 @@ func produce(ctx context.Context, brokers []string, topic string, count, rate in
 		key := fmt.Sprintf("acct-%d", i%keys)
 		err := w.WriteMessages(ctx, kafka.Message{
 			Key:   []byte(key),
-			Value: []byte(fmt.Sprintf("seq-%d", i)),
+			Value: []byte(fmt.Sprintf("%s:seq-%d", run.RunID, i)),
 		})
 		if err != nil {
 			failed.Add(1)
+			run.Failed = append(run.Failed, int64(i))
 			fmt.Printf("write seq-%d failed: %v\n", i, err)
 		} else {
 			acked.Add(1)
+			run.Acked = append(run.Acked, int64(i))
 		}
 		if time.Since(lastReport) >= time.Second {
 			fmt.Printf("  acked=%d failed=%d\n", acked.Load(), failed.Load())
@@ -91,7 +109,13 @@ func produce(ctx context.Context, brokers []string, topic string, count, rate in
 		time.Sleep(interval)
 	}
 	fmt.Printf("done: acked=%d failed=%d\n", acked.Load(), failed.Load())
-	fmt.Println("run 'make audit' to compare acked count against what the log actually holds")
+	if err := json.NewEncoder(f).Encode(run); err != nil {
+		fatalf("save manifest: %v", err)
+	}
+	if err := f.Sync(); err != nil {
+		fatalf("sync manifest: %v", err)
+	}
+	fmt.Printf("manifest saved: run=%s attempted=%d acked=%d failed=%d\n", run.RunID, run.Attempted, len(run.Acked), len(run.Failed))
 }
 
 func consume(ctx context.Context, brokers []string, topic, group string, verbose bool) {
@@ -145,7 +169,46 @@ func consume(ctx context.Context, brokers []string, topic, group string, verbose
 	}
 }
 
-func audit(ctx context.Context, brokers []string, topic string, expect int) {
+type runManifest struct {
+	RunID     string
+	Topic     string
+	Attempted int
+	Acked     []int64
+	Failed    []int64
+}
+
+func classify(run runManifest, counts map[int64]int) (missing []int64, duplicates, failedPresent int) {
+	for _, n := range run.Acked {
+		if counts[n] == 0 {
+			missing = append(missing, n)
+		}
+	}
+	for _, c := range counts {
+		if c > 1 {
+			duplicates += c - 1
+		}
+	}
+	for _, n := range run.Failed {
+		if counts[n] > 0 {
+			failedPresent++
+		}
+	}
+	return
+}
+
+func audit(ctx context.Context, brokers []string, topic, manifestPath string) {
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		fatalf("read manifest: %v", err)
+	}
+	var run runManifest
+	if err := json.Unmarshal(data, &run); err != nil {
+		fatalf("incomplete/invalid manifest: %v", err)
+	}
+	if run.RunID == "" || run.Topic != topic || len(run.Acked)+len(run.Failed) != run.Attempted || len(run.Acked) == 0 {
+		fatalf("manifest does not match a completed run for topic %s", topic)
+	}
+
 	conn, err := kafka.DialContext(ctx, "tcp", brokers[0])
 	if err != nil {
 		fatalf("dial: %v", err)
@@ -176,12 +239,18 @@ func audit(ctx context.Context, brokers []string, topic string, expect int) {
 				for {
 					msg, err := batch.ReadMessage()
 					if err != nil {
+						if !errors.Is(err, io.EOF) {
+							fatalf("audit batch: %v", err)
+						}
 						break
 					}
 					read = msg.Offset + 1
-					perPartition[p.ID]++
-					if seq, ok := strings.CutPrefix(string(msg.Value), "seq-"); ok {
-						n, _ := strconv.ParseInt(seq, 10, 64)
+					if seq, ok := strings.CutPrefix(string(msg.Value), run.RunID+":seq-"); ok {
+						n, err := strconv.ParseInt(seq, 10, 64)
+						if err != nil {
+							fatalf("invalid sequence in run %s: %q", run.RunID, seq)
+						}
+						perPartition[p.ID]++
 						counts[n]++
 					}
 				}
@@ -191,21 +260,13 @@ func audit(ctx context.Context, brokers []string, topic string, expect int) {
 		c.Close()
 	}
 
-	dups, missing := 0, []int64{}
-	for n := int64(0); n < int64(expect); n++ {
-		switch c := counts[n]; {
-		case c == 0:
-			missing = append(missing, n)
-		case c > 1:
-			dups += c - 1
-		}
-	}
+	missing, dups, failedPresent := classify(run, counts)
 	pids := make([]int, 0, len(perPartition))
 	for p := range perPartition {
 		pids = append(pids, p)
 	}
 	sort.Ints(pids)
-	fmt.Printf("audit: topic=%s expected=%d\n", topic, expect)
+	fmt.Printf("audit: topic=%s run=%s attempted=%d acked=%d failed=%d failed_present=%d\n", topic, run.RunID, run.Attempted, len(run.Acked), len(run.Failed), failedPresent)
 	for _, p := range pids {
 		fmt.Printf("  partition %d: %d messages\n", p, perPartition[p])
 	}
@@ -217,10 +278,10 @@ func audit(ctx context.Context, brokers []string, topic string, expect int) {
 	}
 	fmt.Println()
 	if len(missing) > 0 {
-		fmt.Println("RESULT: acked messages are gone — the loss window is real. exit 1")
+		fmt.Println("RESULT: acknowledged sequences missing from this run. exit 1")
 		os.Exit(1)
 	}
-	fmt.Println("RESULT: every expected sequence is present. exit 0")
+	fmt.Println("RESULT: every acknowledged sequence is present; failed sends are separate. exit 0")
 }
 
 func env(key, def string) string {

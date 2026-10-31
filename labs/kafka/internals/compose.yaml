@@ -61,6 +61,8 @@ services:
       args:
         LAB: internals
     image: kafka-internals-driver:local
+    volumes:
+      - evidence:/evidence
     profiles: ["tools"]
     environment:
       KAFKA_BROKERS: "kafka1:9092,kafka2:9092,kafka3:9092"
@@ -73,6 +75,7 @@ services:
         condition: service_healthy
 
 volumes:
+  evidence:
   kafka1-data:
   kafka2-data:
   kafka3-data:

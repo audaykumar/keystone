@@ -22,7 +22,7 @@
     <ul class="tldr-list">
       <li><strong>Ordering is per partition:</strong> same key means same partition and ordered records; different keys can interleave.</li>
       <li><strong>Consumers own position:</strong> brokers delete by retention, not by consumption, so replay is just a committed offset change.</li>
-      <li><strong>An ack is a configured durability promise:</strong> <code>acks=1</code> is leader-local; <code>acks=all</code> with enough in-sync replicas turns single-broker loss into visible write failure.</li>
+      <li><strong>An ack is a configured durability promise:</strong> <code>acks=1</code> is leader-local; <code>acks=all</code> waits for the ISR. A broker failure need not fail the write if enough replicas remain; insufficient ISR or exhausted retries produces an error.</li>
       <li><strong>Fast reads come from storage design:</strong> append-only files, page cache, batching, compression, and zero-copy reads reduce broker overhead.</li>
     </ul>
   </div>
@@ -45,7 +45,7 @@
 
   <h3>Consumer groups and offsets</h3>
   <p>A consumer group divides partitions among members. One partition is owned by at most one member of a group at a time, which preserves partition order for that group. Offsets are stored in Kafka's internal <code>__consumer_offsets</code> topic. Automatic commits hide the timing decision; manual commits make the application choose whether progress is recorded before or after processing.</p>
-  <p><code>auto.offset.reset</code> decides where a new group starts when no committed offset exists: earliest, latest, or error depending on client. It does not decide normal crash recovery, where the committed offset is already present.</p>
+  <p><code>auto.offset.reset</code> applies when no initial offset exists or the stored offset is no longer available, for example after retention removes old data. Normal crash recovery resumes from a valid committed offset. See <a href="https://kafka.apache.org/38/configuration/consumer-configs/#auto.offset.reset">Kafka consumer configuration</a>.</p>
 
   <h2>Concept Deep Dive</h2>
   <h3>The log is segments, not one endless file</h3>
@@ -81,8 +81,8 @@
   <h2>Lab Evidence</h2>
   <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/kafka/internals"><code>labs/kafka/internals</code></a>: a 3-broker KRaft cluster, a <code>payments</code> topic (6 partitions, RF 3, <code>min.insync.replicas=2</code>), and a Go driver producing sequence-numbered messages so loss and duplication are countable facts.</p>
   <div class="run-grid">
-    <div class="run-card"><h3><code>make break</code></h3><p>acks=1 producer + <code>make kill</code> on a broker mid-run. The audit scans all partitions and exits 1 on missing sequences.</p></div>
-    <div class="run-card"><h3><code>make test</code></h3><p>acks=all under the same kill: failed sends are visible errors; audit finds every acked sequence.</p></div>
+    <div class="run-card"><h3><code>make break</code></h3><p>acks=1 producer + <code>make kill</code> on a broker mid-run. The audit exits 1 only if an acknowledged ID is missing from the log, which depends on the kill landing in the replication window.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>acks=all under the same kill: audit compares the log with exact acknowledged IDs in the completed run manifest. Failed sends are reported separately.</p></div>
     <div class="run-card"><h3><code>make consume</code> ×2</h3><p>Two group members: watch the coordinator split 6 partitions 3/3, then hand them back when one leaves.</p></div>
   </div>
   <h3>Measured: happy path and partition skew</h3>
@@ -91,6 +91,23 @@
 partition 3: 60   partition 4: 180  partition 5: 180
 unique sequences found: 600, duplicates: 0, missing: 0 => exit 0</code></pre>
   <p>The <code>make break</code> broker-kill loss window is scripted but not yet captured; its evidence will be added after a recorded run.</p>
+
+  <h3>Recheck: acknowledged IDs during broker failure (2026-10-31)</h3>
+  <p>A 600-attempt <code>acks=all</code> run with <code>make kill</code> issued about five seconds in, so broker 2 stopped mid-run. Build output, per-second progress lines, and blank lines are removed; values are unedited.</p>
+  <pre><code>done: acked=600 failed=0
+manifest saved: run=386214e2965c25275d57ab8c attempted=600 acked=600 failed=0
+audit: topic=payments run=386214e2965c25275d57ab8c attempted=600 acked=600 failed=0 failed_present=0
+  partition 0: 60 messages
+  partition 1: 60 messages
+  partition 2: 60 messages
+  partition 3: 60 messages
+  partition 4: 180 messages
+  partition 5: 180 messages
+  unique sequences found: 600
+  duplicates: 0
+  missing: 0
+RESULT: every acknowledged sequence is present; failed sends are separate. exit 0</code></pre>
+  <p>No send failed and no duplicate appeared: leader election on the surviving replicas kept writes succeeding, and the audit compared the log with this run's own manifest. An earlier run that showed failed sends and retry duplicates was not reproduced in two fresh runs and its raw output was not kept, so it is not quoted here. This run does not capture the <code>acks=1</code> loss window.</p>
 
   <h2>Production Notes</h2>
   <ul>

@@ -7,10 +7,11 @@ RUN go mod download
 
 COPY cmd ./cmd
 ARG LAB
-RUN CGO_ENABLED=0 go build -trimpath -o /driver ./cmd/${LAB}
+RUN go test ./cmd/${LAB} && CGO_ENABLED=0 go build -trimpath -o /driver ./cmd/${LAB}
 
 FROM alpine:3.21
 RUN adduser -D -u 10001 app
+RUN mkdir /evidence && chown app /evidence
 USER app
 COPY --from=build /driver /usr/local/bin/driver
 ENTRYPOINT ["driver"]
