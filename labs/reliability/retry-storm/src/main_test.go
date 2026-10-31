@@ -44,6 +44,7 @@ func TestCallerCancellationStopsDownstream(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	req := httptest.NewRequest("GET", "/work", nil).WithContext(ctx)
+	req.Header.Set("X-Deadline-Ms", "5000") // budgeted policy: cancellation propagates
 	done := make(chan struct{})
 	go func() { handler.ServeHTTP(httptest.NewRecorder(), req); close(done) }()
 	<-reached
@@ -57,6 +58,33 @@ func TestCallerCancellationStopsDownstream(t *testing.T) {
 	case <-cancelled:
 	case <-time.After(time.Second):
 		t.Fatal("backend ignored cancellation")
+	}
+}
+
+func TestNaivePolicyIgnoresCallerCancellation(t *testing.T) {
+	reached := make(chan struct{})
+	var cancelled atomic.Bool
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(reached)
+		select {
+		case <-r.Context().Done():
+			cancelled.Store(true)
+		case <-time.After(300 * time.Millisecond):
+		}
+	}))
+	defer backend.Close()
+	// No deadline and no inherited budget: the blind baseline.
+	handler := proxyHandler("test", policy{attempts: 1, attemptTimeout: time.Second}, backend.URL, &http.Client{}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := httptest.NewRequest("GET", "/work", nil).WithContext(ctx)
+	done := make(chan struct{})
+	go func() { handler.ServeHTTP(httptest.NewRecorder(), req); close(done) }()
+	<-reached
+	cancel()
+	<-done
+	if cancelled.Load() {
+		t.Fatal("naive policy propagated the caller's cancellation downstream")
 	}
 }
 

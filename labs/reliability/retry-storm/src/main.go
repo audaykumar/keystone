@@ -234,10 +234,13 @@ func proxyHandler(role string, pol policy, downstream string, client *http.Clien
 			http.Error(w, "deadline exhausted", http.StatusGatewayTimeout)
 			return
 		}
-		ctx := r.Context()
+		// Cancellation propagation belongs to the budgeted policy. The naive
+		// baseline is deliberately blind: when its caller gives up, work already
+		// sent downstream keeps running and later attempts still fire.
+		ctx := context.Background()
 		if budgetEnabled {
 			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, remaining)
+			ctx, cancel = context.WithTimeout(r.Context(), remaining)
 			defer cancel()
 		}
 		var lastCode int

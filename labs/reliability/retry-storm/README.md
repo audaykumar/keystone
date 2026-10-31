@@ -33,10 +33,11 @@ Worst-case amplification is 3 x 3 = 9 backend calls per user request.
 4. More errors cause more retries. Go to 2.
 
 The offered traffic is below degraded capacity; retries can push it into
-overload. The original experiment kept degradation active throughout traffic,
-so it demonstrated amplification, not persistence after trigger removal.
-`make recovery` (naive policy) removes degradation after 12s while traffic continues for 24s.
-Observe recovery or sustained failure before calling a run metastable.
+overload. `make break` keeps the degradation active throughout, so on its own it
+shows amplification. `make recovery` removes the degradation after 12s while
+traffic continues for 24s: if the system recovers, the storm was only the
+trigger; if it stays down, the retries are sustaining it. See the
+trigger-removal recheck below.
 
 ## Commands
 
@@ -54,8 +55,9 @@ policy, run the open-loop load, and print the amplification factor.
 
 ## Historical results (2026-07-08, before inherited-deadline correction)
 
-The old API parsed but did not enforce the inherited budget. These numbers
-are retained as historical observations, not measurements of the corrected code.
+The old API parsed but did not enforce the inherited budget, so the fixed-policy
+numbers below come from code that has since changed. The naive baseline is
+unchanged and is re-measured in the recheck sections.
 
 Offered load 60 req/s for 20s; degraded backend capacity 90 req/s with a 40%
 base error rate; both hops 3 attempts.
@@ -123,29 +125,46 @@ Any one of these helps; together they convert collapse into degraded-but-serving
 - Kyle Kingsbury / AWS, and Google SRE ch. on load shedding — graceful degradation as the escape hatch
 - Book: *Release It!*, Michael Nygard — Retry, Timeout, Circuit Breaker, and Bulkhead as named stability patterns
 
+## Naive storm recheck (2026-10-31)
+
+`make break`: naive policy, 60 req/s for 20s, backend degraded. Blank lines and build output are removed; values are unedited.
+
+```text
+[naive (storm)] backend degraded; offering 60 req/s for 20s
+=== naive (storm) ===
+client requests:   1200
+  succeeded:       142 (11.8%)
+  failed:          1058
+backend calls:     9725
+AMPLIFICATION:     8.10x  (backend calls / client requests)
+client latency:    p50=1.883s p99=1.89s
+```
+
+Blind retries at both hops drove 1200 requests to 9725 backend calls (8.10x) and 11.8% success, with every latency pinned near the 1.9s attempt ceiling. The historical run (2026-07-08) measured 22.8% success at 7.30x; the storm's exact numbers vary run to run.
+
 ## Trigger-removal recheck (2026-10-31)
 
-Naive policy, 60 req/s for 24s, degradation removed at 12s. Blank lines are removed; values are unedited.
+`make recovery`: naive policy, 60 req/s for 24s, degradation removed at 12s. Blank lines and build output are removed; values are unedited.
 
 ```text
 [trigger removal (naive policy)] backend degraded; offering 60 req/s for 24s
 trigger removed at 12s; offered traffic continues
 === trigger removal (naive policy) ===
 client requests:   1440
-  succeeded:       1039 (72.2%)
-  failed:          401
-backend calls:     2582
-AMPLIFICATION:     1.79x  (backend calls / client requests)
-pre-removal new requests:  ok=319 failed=401 (started before the trigger was removed)
-post-removal new requests: ok=720 failed=0 (includes recovery transient; not a steady-state proof)
-client latency:    p50=10ms p99=1.888s
+  succeeded:       136 (9.4%)
+  failed:          1304
+backend calls:     11921
+AMPLIFICATION:     8.28x  (backend calls / client requests)
+pre-removal new requests:  ok=136 failed=584 (started before the trigger was removed)
+post-removal new requests: ok=0 failed=720 (includes recovery transient; not a steady-state proof)
+client latency:    p50=1.883s p99=1.89s
 ```
 
-Requests started before removal succeeded 319 of 720 times (44.3%). Every one of the 720 requests started after removal succeeded. In this configuration the bad state did not persist once the trigger was gone, so this run is not an example of a metastable failure; the longer or higher-load variants that might sustain one were not tried. The post-removal counts include the recovery transient and are not a steady-state benchmark.
+Requests started before removal succeeded 136 of 720 times (18.9%). After the trigger was removed, none of the 720 requests started succeeded (0 of 720) and latency stayed pinned near 1.9s: the amplified retry load (8.28x) kept the backend overloaded even though its degradation was gone. This is one run with the lab's fixed rates and capacities, so it shows the loop can sustain itself, not how often it does. An earlier recovery run, made while the naive policy was still cancelling orphaned downstream calls, recovered; that baseline was corrected and is now covered by a test.
 
 ## Corrected fixed-policy recheck (2026-10-31)
 
-Corrected fixed policy, 60 req/s for 20s, backend continuously degraded. Blank lines are removed; values are unedited.
+`make test`: corrected fixed policy, 60 req/s for 20s, backend continuously degraded. Blank lines and build output are removed; values are unedited.
 
 ```text
 [fixed (budgeted)] backend degraded; offering 60 req/s for 20s
@@ -158,4 +177,15 @@ AMPLIFICATION:     1.55x  (backend calls / client requests)
 client latency:    p50=10ms p99=1.104s
 ```
 
-Retry buckets are per hop: each request adds 0.2 token, each retry spends one, with a 100-token initial burst. The 0.2 refill is not a global 20% amplification bound. This is one local run.
+```text
+[fixed (budgeted)] backend degraded; offering 60 req/s for 20s
+=== fixed (budgeted) ===
+client requests:   1200
+  succeeded:       1035 (86.2%)
+  failed:          165
+backend calls:     1877
+AMPLIFICATION:     1.56x  (backend calls / client requests)
+client latency:    p50=20ms p99=1.103s
+```
+
+Retry buckets are per hop: each request adds 0.2 token, each retry spends one, with a 100-token initial burst. The 0.2 refill is not a global 20% amplification bound. Two runs of the same target are shown; success varies between them (77.7% and 86.2%) while amplification stays near 1.5x.

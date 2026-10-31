@@ -45,7 +45,7 @@
 
   <h2>Concept Deep Dive</h2>
   <h3>Metastable failure: the loop that sustains itself</h3>
-  <p>The dangerous case is not a spike that passes. It is a feedback loop. A dependency starts returning some errors. Its callers retry. The retries raise the arrival rate. The higher rate pushes the dependency past its capacity, so latency and error rate climb. The higher error rate produces still more retries. The system can settle into a stable-but-bad state that no longer needs the original trigger. If removing the initial fault does not end the overload because the retry load alone holds it open, the failure is <em>metastable</em>, which is why some outages do not end when the triggering event does. Whether a given configuration does this has to be observed; this lab's recovery run did not.</p>
+  <p>The dangerous case is not a spike that passes. It is a feedback loop. A dependency starts returning some errors. Its callers retry. The retries raise the arrival rate. The higher rate pushes the dependency past its capacity, so latency and error rate climb. The higher error rate produces still more retries. The system can settle into a stable-but-bad state that no longer needs the original trigger. If removing the initial fault does not end the overload because the retry load alone holds it open, the failure is <em>metastable</em>, which is why some outages do not end when the triggering event does.</p>
 
   <figure class="terminal-shot">
     <img src="../assets/diagrams/retry-metastable-loop.svg" alt="A four-node feedback cycle of errors, retries, rising arrival rate, and overload, with jitter, timeout budgets, and retry budgets cutting the cycle." />
@@ -97,25 +97,37 @@ fixed (budgeted):
   backend calls: 1899
   AMPLIFICATION: 1.58x
   latency:       p50=10ms    p99=1.103s</code></pre>
-  <p>The historical comparison shows retry amplification and improved outcomes under the combined policy. Its continuously degraded run did not demonstrate persistence after trigger removal, and its API hop did not enforce inherited deadlines. The corrected implementation enforces inherited budgets and cancellation. <code>make recovery</code> removes degradation while offered traffic continues; whether a bad state persists must be observed rather than assumed. Historical numbers above are not measurements of the corrected implementation.</p>
+  <p>The historical fixed-policy numbers come from code in which the API parsed but did not enforce the inherited deadline, so they predate the correction. The naive baseline is unchanged and is re-measured below.</p>
+
+  <h3>Recheck: the naive storm (2026-10-31)</h3>
+  <p>Naive policy, 60 req/s for 20s, backend degraded. Blank lines and build output are removed; values are unedited.</p>
+  <pre><code>[naive (storm)] backend degraded; offering 60 req/s for 20s
+=== naive (storm) ===
+client requests:   1200
+  succeeded:       142 (11.8%)
+  failed:          1058
+backend calls:     9725
+AMPLIFICATION:     8.10x  (backend calls / client requests)
+client latency:    p50=1.883s p99=1.89s</code></pre>
+  <p>Blind retries at both hops drove 1200 requests to 9725 backend calls (8.10x) and 11.8% success, with every latency pinned near the 1.9s attempt ceiling. The historical run (2026-07-08) measured 22.8% success at 7.30x; the storm's exact numbers vary run to run.</p>
 
   <h3>Recheck: remove the trigger while traffic continues (2026-10-31)</h3>
-  <p>Naive policy, 60 req/s for 24s, degradation removed at 12s. Blank lines are removed; values are unedited.</p>
+  <p>Naive policy, 60 req/s for 24s, degradation removed at 12s. Blank lines and build output are removed; values are unedited.</p>
   <pre><code>[trigger removal (naive policy)] backend degraded; offering 60 req/s for 24s
 trigger removed at 12s; offered traffic continues
 === trigger removal (naive policy) ===
 client requests:   1440
-  succeeded:       1039 (72.2%)
-  failed:          401
-backend calls:     2582
-AMPLIFICATION:     1.79x  (backend calls / client requests)
-pre-removal new requests:  ok=319 failed=401 (started before the trigger was removed)
-post-removal new requests: ok=720 failed=0 (includes recovery transient; not a steady-state proof)
-client latency:    p50=10ms p99=1.888s</code></pre>
-  <p>Requests started before removal succeeded 319 of 720 times (44.3%). Every one of the 720 requests started after removal succeeded. In this configuration the bad state did not persist once the trigger was gone, so this run is not an example of a metastable failure; the longer or higher-load variants that might sustain one were not tried. The post-removal counts include the recovery transient and are not a steady-state benchmark.</p>
+  succeeded:       136 (9.4%)
+  failed:          1304
+backend calls:     11921
+AMPLIFICATION:     8.28x  (backend calls / client requests)
+pre-removal new requests:  ok=136 failed=584 (started before the trigger was removed)
+post-removal new requests: ok=0 failed=720 (includes recovery transient; not a steady-state proof)
+client latency:    p50=1.883s p99=1.89s</code></pre>
+  <p>Requests started before removal succeeded 136 of 720 times (18.9%). After the trigger was removed, none of the 720 requests started succeeded (0 of 720) and latency stayed pinned near 1.9s: the amplified retry load (8.28x) kept the backend overloaded even though its degradation was gone. This is one run with the lab's fixed rates and capacities, so it shows the loop can sustain itself, not how often it does. An earlier recovery run, made while the naive policy was still cancelling orphaned downstream calls, recovered; that baseline was corrected and is now covered by a test.</p>
 
-  <h3>Recheck: corrected inherited deadline, continuously degraded backend (2026-10-31)</h3>
-  <p>Corrected fixed policy, 60 req/s for 20s, backend continuously degraded. Blank lines are removed; values are unedited.</p>
+  <h3>Recheck: corrected fixed policy, continuously degraded backend (2026-10-31)</h3>
+  <p>Corrected fixed policy, 60 req/s for 20s. Blank lines and build output are removed; values are unedited.</p>
   <pre><code>[fixed (budgeted)] backend degraded; offering 60 req/s for 20s
 === fixed (budgeted) ===
 client requests:   1200
@@ -124,7 +136,15 @@ client requests:   1200
 backend calls:     1862
 AMPLIFICATION:     1.55x  (backend calls / client requests)
 client latency:    p50=10ms p99=1.104s</code></pre>
-  <p>Retry buckets are per hop: each request adds 0.2 token, each retry spends one, with a 100-token initial burst. The 0.2 refill is not a global 20% amplification bound. This is one local run.</p>
+  <pre><code>[fixed (budgeted)] backend degraded; offering 60 req/s for 20s
+=== fixed (budgeted) ===
+client requests:   1200
+  succeeded:       1035 (86.2%)
+  failed:          165
+backend calls:     1877
+AMPLIFICATION:     1.56x  (backend calls / client requests)
+client latency:    p50=20ms p99=1.103s</code></pre>
+  <p>Retry buckets are per hop: each request adds 0.2 token, each retry spends one, with a 100-token initial burst. The 0.2 refill is not a global 20% amplification bound. Two runs of the same target are shown; success varies between them (77.7% and 86.2%) while amplification stays near 1.5x.</p>
 
   <h2>Production Notes</h2>
   <ul>
