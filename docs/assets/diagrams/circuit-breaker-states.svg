@@ -45,8 +45,8 @@
   <!-- HALF-OPEN -->
   <rect class="warn" x="410" y="430" width="280" height="120" rx="14"/>
   <text class="label" x="450" y="482">HALF-OPEN</text>
-  <text class="small muted" x="440" y="510">exactly one probe allowed</text>
-  <text class="small muted" x="440" y="530">every other call still sheds</text>
+  <text class="small muted" x="440" y="510">bounded probes allowed</text>
+  <text class="small muted" x="440" y="530">other calls rejected</text>
 
   <!-- CLOSED -> OPEN : trip -->
   <path class="tripEdge" d="M 340 210 L 758 210"/>
@@ -69,5 +69,5 @@
   <text class="small" x="810" y="320" fill="#ff7b72">reopen, restart cooldown</text>
 
   <text class="muted small" x="44" y="570">A trip stops sending calls the instant the streak crosses the threshold.</text>
-  <text class="muted small" x="44" y="592">The cooldown is the only way back in, and it costs exactly one call to find out.</text>
+  <text class="muted small" x="44" y="592">The cooldown is the only way back in, with a bounded recovery sample.</text>
 </svg>

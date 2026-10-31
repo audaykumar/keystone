@@ -122,12 +122,11 @@ off).
   channel used as a token). Without it, both downstreams draw from the same
   pool and a slow one can hold every slot. With it, the same total capacity is
   split so one dependency's queue cannot starve another's.
-- **Load shedding.** When a pool is full or a breaker is open, `SHED=on`
-  rejects immediately instead of blocking the caller until a slot frees.
-  Shedding is what turns "the breaker/bulkhead exist" into "callers actually
-  see the benefit": without it, blocked goroutines pile up and open-loop
-  callers still pay the full queueing delay even though nothing was ever going
-  to succeed.
+- **Load shedding.** When a pool is full, `SHED=on` rejects immediately instead
+  of blocking until a slot frees. An open breaker rejects calls regardless of
+  SHED; SHED only controls whether a full capacity pool rejects or queues.
+  Without bounded queueing, waiting for pool capacity can still consume caller
+  time and resources.
 
 ## Implementation hooks
 

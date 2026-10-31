@@ -10,9 +10,10 @@
 //	BREAKER=on|off        consult/update the per-downstream breaker state machine
 //	BULKHEAD=on|off        on: one bounded pool per downstream. off: one shared
 //	                        pool sized the same as the two split pools combined
-//	SHED=on|off             on: a full breaker/pool fails fast (no queueing).
+//	SHED=on|off             on: a full bulkhead pool fails fast (no queueing).
 //	                        off: a blocked slot is waited for (open-loop callers
-//	                        pile up instead of being told no)
+//	                        pile up instead of being told no). An open breaker
+//	                        rejects either way.
 //	BREAKER_THRESHOLD       consecutive downstream failures before the breaker trips
 //	BREAKER_COOLDOWN_MS     how long an open breaker stays open before one probe
 //	BULKHEAD_SIZE           total concurrent-call budget across both downstreams

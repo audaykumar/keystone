@@ -22,17 +22,17 @@
     <ul class="tldr-list">
       <li><strong>A circuit breaker stops sending calls</strong> to a dependency that is already failing, instead of letting every caller discover that the hard way.</li>
       <li><strong>A bulkhead limits the blast radius</strong> of a dependency that is still being called: a bounded, per-dependency capacity pool so one slow dependency cannot consume the capacity another one needs.</li>
-      <li><strong>Load shedding is what makes both useful:</strong> rejecting immediately when a breaker is open or a pool is full, rather than queueing work that has nowhere to go.</li>
+      <li><strong>Pool-full policy matters:</strong> an open breaker already rejects calls; a full bulkhead may reject immediately or wait in a bounded queue.</li>
       <li><strong>They answer different questions:</strong> should we call this dependency at all (breaker), how much of our capacity can it use if we do (bulkhead), and what do we do with the caller while we decide (shedding).</li>
     </ul>
   </div>
 
   <h2>Mental Model</h2>
   <p>An electrical circuit breaker trips to protect the house wiring, not the appliance that caused the surge. It does not try to fix the short; it just stops current from flowing until someone resets it. A software circuit breaker does the same job for a call to a dependency: once that dependency looks broken, the breaker stops sending it traffic, protecting the caller's own resources rather than trying to save the callee.</p>
-  <p>A breaker has three states. <strong>Closed</strong> is normal: calls pass through and the breaker is watching for failures. Enough consecutive failures <strong>trip</strong> it <strong>open</strong>: every call fails immediately, without even attempting the dependency. After a cool-off, the breaker allows exactly one <strong>half-open</strong> probe through to test whether the dependency has recovered; success closes it again, failure reopens it and restarts the clock.</p>
+  <p>A breaker has three states. <strong>Closed</strong> is normal: calls pass through and the breaker is watching for failures. Enough consecutive failures <strong>trip</strong> it <strong>open</strong>: every call fails immediately, without even attempting the dependency. After a cool-off, this simple policy allows one <strong>half-open</strong> probe through to test whether the dependency has recovered; success closes it again, failure reopens it and restarts the clock.</p>
 
   <figure class="terminal-shot">
-    <img src="../assets/diagrams/circuit-breaker-states.svg" alt="A state machine with three states: closed, where calls pass through and failures accumulate a streak; open, where every call fails fast after the streak trips the breaker; and half-open, where exactly one probe is allowed through after a cooldown, closing the breaker on success or reopening it on failure." />
+    <img src="../assets/diagrams/circuit-breaker-states.svg" alt="A state machine with three states: closed, where calls pass through and failures accumulate a streak; open, where every call fails fast after the streak trips the breaker; and half-open, where a bounded number of probes (one, in this lab's simple policy) is allowed through after a cooldown, closing the breaker on success or reopening it on failure." />
   </figure>
 
   <h2>Ground-Up Explanation</h2>
@@ -53,7 +53,7 @@
   </figure>
 
   <h3>Load shedding</h3>
-  <p>A breaker decides not to call a dependency; a bulkhead limits how many calls can be in flight to it. Neither one, on its own, decides what happens to a caller that arrives once the breaker is open or the pool is full. <em>Load shedding</em> is that decision: reject immediately rather than queue. The alternative, blocking the caller until a slot frees or the breaker closes, feels gentler but is usually worse: it turns a resource limit into unbounded queueing latency, and an open-loop caller that would have simply retried or failed over now sits waiting for an answer that arrives too late to be useful, if it arrives at all. Shedding converts "eventually fails, expensively" into "fails immediately, cheaply," which is a strictly more useful signal to give a caller.</p>
+  <p>An open breaker already rejects calls without contacting the dependency. A bulkhead limits in-flight work; its pool-full policy may queue or reject. Here load shedding means choosing immediate rejection when that capacity pool is full, rather than allowing unbounded waiting. These controls compose, but a separate shedding switch is not required for a conventional open breaker to fail fast.</p>
   <h3>Breaker versus retry budget</h3>
   <p>A circuit breaker and a retry budget are both defenses against sending too much traffic to a struggling dependency, but they act at different granularities. A retry budget throttles smoothly: it caps retries as a fraction of traffic, so a dependency with an isolated, low failure rate still gets some retries while one failing broadly gets almost none. A breaker acts in discrete jumps: closed or open, all calls or none. Where retries make sense at all, a budget is often the gentler first line of defense; a breaker is the blunter tool for when you want an abrupt, unambiguous stop rather than a gradual throttle. They are not mutually exclusive; a breaker can sit in front of a retrying caller and stop the retries entirely once a dependency is clearly down.</p>
   <h3>Where each belongs</h3>
@@ -62,7 +62,7 @@
   <h2>Implementation Details</h2>
   <ul>
     <li><strong>Track consecutive failures, not a rolling error rate,</strong> for the simplest correct breaker; a rate-based trigger adds a time window to reason about but reacts to sustained partial failure better.</li>
-    <li><strong>The half-open state must allow exactly one in-flight probe.</strong> Letting every caller probe simultaneously the instant the cooldown expires reproduces a thundering herd against a dependency that may still be fragile.</li>
+    <li><strong>The half-open state must bound in-flight probes; one is a simple policy, while implementations such as Resilience4j allow a configurable sample.</strong> Letting every caller probe simultaneously the instant the cooldown expires reproduces a thundering herd against a dependency that may still be fragile.</li>
     <li><strong>Size a bulkhead from the caller's own capacity, not the dependency's.</strong> The pool exists to protect the caller; its size is "how much of my own capacity am I willing to risk on this dependency," not an estimate of the dependency's throughput.</li>
     <li><strong>Shedding needs a cheap rejection path.</strong> If failing fast still means allocating a connection or doing meaningful work before saying no, it has not actually solved the problem it exists to solve.</li>
     <li><strong>State must be shared across the instances handling one dependency,</strong> or scoped correctly if it is per-instance; a breaker that only one of ten instances knows is open protects one tenth of the traffic.</li>
