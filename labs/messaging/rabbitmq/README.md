@@ -12,21 +12,20 @@ the poison message somewhere to go instead.
 One binary, two roles (`ROLE` env), one topology: a direct exchange
 `lab.direct` bound to queue `work.queue`, plus a dead-letter exchange
 `lab.dlx` bound to queue `work.dlq`. Both are always declared; what changes
-between scenarios is whether `work.queue` carries
+between scenarios is the consumer retry policy and whether `work.queue` carries
 `x-dead-letter-exchange`/`x-dead-letter-routing-key` pointing at them.
 
 `producer` deletes and redeclares the topology for the chosen `MODE`, then
 publishes 30 labeled messages, one of them (`seq=5`) a poison message the
-consumer always fails to process. `consumer` uses manual ack, and the two
-scenarios deliberately use different QoS prefetch values to show different
-things:
+consumer always fails to process. Both current scenarios use manual ack and
+prefetch 1; they differ in retry policy and dead-letter handling:
 
-| | `MODE=break` (prefetch=1) | `MODE=test` (prefetch=5) |
+| | `MODE=break` (prefetch=1) | `MODE=test` (prefetch=1) |
 |---|---|---|
 | `work.queue` dead-letter args | none | `x-dead-letter-exchange: lab.dlx` |
 | Poison handling | `nack(requeue=true)` every time, capped at `BREAK_CAP` redeliveries so the demo terminates | Retries via `x-retry-count` header: republish to the tail of the queue and ack the original, up to `MAX_ATTEMPTS`; final attempt is `nack(requeue=false)`, which RabbitMQ dead-letters into `work.dlq` |
 | Where the poison ends up | Stuck in `work.queue`, requeued and unresolved | `work.dlq`, exactly 1 message |
-| What it demonstrates | Head-of-line blocking: with only 1 unacked slot, the broker keeps handing the consumer the requeued poison instead of anything queued behind it | Ordering loss: with 5 unacked slots, good messages keep flowing while the poison is retried, so it visibly finishes out of its produced position instead of blocking everything |
+| What it demonstrates | Head-of-line blocking: with only 1 unacked slot, the broker keeps handing the consumer the requeued poison instead of anything queued behind it | Bounded republish-to-tail retries let good work advance, even with prefetch 1, so it visibly finishes out of its produced position instead of blocking everything |
 
 Good messages are acked immediately (after a small simulated 5ms of work) and
 are never touched by the retry/dead-letter logic. The consumer's own report
@@ -40,6 +39,7 @@ directly instead of inferred.
 make up      # start RabbitMQ (management image, healthcheck + --wait)
 make break   # no DLQ: poison redelivers forever, capped and reported
 make test    # DLX + retry-count guard: poison dead-lettered after 3 attempts
+make prefetch # same retry policy at prefetch 1 then 5, with queue depths
 make dlq     # inspect work.dlq via the management API
 make depths  # print work.queue and work.dlq depths
 make logs    # follow the broker's logs
@@ -50,7 +50,11 @@ make down    # full teardown: containers, network, volumes, built image
 the broker, because the built-in `guest` user is restricted to loopback
 connections by default and would refuse AMQP logins from another container.
 
-## Measured results (2026-07-08)
+## Historical results (2026-07-08, before factual-audit corrections)
+
+These runs changed both retry strategy and prefetch; they do not isolate prefetch.
+The current test fixes prefetch at 1, confirms replacement publishes before ack,
+and checks unroutable returns. The captured numbers below are historical.
 
 Real output from `make break` (30 messages, poison at seq=5, prefetch=1,
 `BREAK_CAP=20`):
@@ -88,35 +92,13 @@ work.queue messages=0
 work.dlq   messages=1
 ```
 
-**Break: the poison blocks everything behind it.** With prefetch=1, the
-consumer only ever has one unacked slot, and RabbitMQ keeps refilling that
-slot with the just-requeued poison instead of the queued good messages.
-Only the 4 messages produced *before* the poison (seq 1-4) ever get
-delivered; `good_processed=4/29`. After 20 capped redeliveries, `work.queue`
-holds 26 messages: the poison itself plus the 25 good messages (seq 6-30)
-that were never delivered at all. This is head-of-line blocking with real
-numbers, not a description of what it would do: a single unprocessable
-message, with no dead-letter target and a tight prefetch, stalls an entire
-queue.
-
-**Test: the poison gets exactly one place to go, and good work keeps
-flowing.** With prefetch=5 there is room for other messages to be delivered
-alongside the poison while it retries. After 3 attempts (`x-retry-count` 0,
-1, 2) the consumer's final `nack(requeue=false)` hits a queue configured
-with `x-dead-letter-exchange`, and RabbitMQ routes the message to
-`work.dlq`. `work.queue` drains to 0, `work.dlq` holds exactly 1, and all 29
-good messages complete.
-
-**Ordering loss shows up wherever the poison isn't fully blocking.** In
-`test`, 29 of 29 good messages complete in strict produced order
-(1,2,3,4,6,7,...,30); the only thing that moves is the poison itself,
-produced at position 5 but completing dead last, at position 30 of 30
-(delta=25, 25 inversions against the messages produced after it). Nacking
-with requeue does not corrupt the order of everything else; it removes the
-one guarantee a FIFO queue is supposed to provide for the message that keeps
-failing: that it will be processed anywhere near where it was produced. In
-`break`, the same mechanism is total rather than partial: the poison's
-"position" never resolves at all, and neither does anything after it.
+The historical break run showed native requeue repeatedly occupying the only
+prefetch slot. The historical test used republish-to-tail, a retry limit, DLX,
+and prefetch 5. These results do not isolate prefetch: placing the replacement
+at the tail allows good work to advance even with prefetch 1. The corrected
+comparison fixes prefetch at 1; `make prefetch` holds the bounded retry policy
+constant while comparing 1 and 5. Historical completion order is an observation
+of that run, not a guarantee for arbitrary broker scheduling.
 
 ## What each part does
 
@@ -176,3 +158,47 @@ failing: that it will be processed anywhere near where it was produced. In
 - Hohpe & Woolf, *Enterprise Integration Patterns* — Dead Letter Channel, Guaranteed Delivery, Competing Consumers
 - Book: Martin Kleppmann, *Designing Data-Intensive Applications*, ch. 11, on message brokers versus logs
 - `labs/kafka/delivery` and `docs/delivery-semantics/overview.html` — the companion topic on at-least-once delivery and idempotent consumers; RabbitMQ redelivery is the same at-least-once contract from a queue instead of a log.
+
+### Delivery safety
+
+Replacement publishes use confirms and mandatory routing before the original ack.
+A crash between confirmation and ack can duplicate work. Default classic-queue
+DLX forwarding can still lose messages when its target is unavailable; it is not
+a durable transfer guarantee. See [DLX safety](https://www.rabbitmq.com/docs/3.13/dlx#safety).
+
+## Controlled recheck (2026-10-31)
+
+Same bounded republish-to-tail policy (30 messages, poison at seq 5, 3 attempts), prefetch 1 then 5, from `make prefetch`. Build output and blank lines are removed; values are unedited.
+
+```text
+== prefetch=1 ==
+MODE=test COUNT=30 POISON_AT=5 MAX_ATTEMPTS=3 PROCESS_MS=5 PREFETCH=1 docker compose run --rm producer
+producer: mode=test published=30 poison_at=5 exchange=lab.direct queue=work.queue dlq_on_queue=true
+MODE=test COUNT=30 POISON_AT=5 MAX_ATTEMPTS=3 PROCESS_MS=5 PREFETCH=1 docker compose run --rm consumer
+consumer: attempt 3/3 exhausted; poison seq=5 dead-lettered to work.dlq
+=== consumer report: mode=test prefetch=1 ===
+good_processed=29/29 poison_attempts=3 poison_resolved=true elapsed=191ms good_throughput=151.9 msg/s
+produced_order:  [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30]
+completed_order: [1 2 3 4 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 5]
+ordering: poison seq=5 produced at position 5 of 30; completed at position 30 of 30 (delta=25)
+ordering: inversions in completed_order=25 (0 means every completed message finished in produced order)
+>> queue depths:
+work.queue messages=0
+work.dlq   messages=1
+== prefetch=5 ==
+MODE=test COUNT=30 POISON_AT=5 MAX_ATTEMPTS=3 PROCESS_MS=5 PREFETCH=5 docker compose run --rm producer
+producer: mode=test published=30 poison_at=5 exchange=lab.direct queue=work.queue dlq_on_queue=true
+MODE=test COUNT=30 POISON_AT=5 MAX_ATTEMPTS=3 PROCESS_MS=5 PREFETCH=5 docker compose run --rm consumer
+consumer: attempt 3/3 exhausted; poison seq=5 dead-lettered to work.dlq
+=== consumer report: mode=test prefetch=5 ===
+good_processed=29/29 poison_attempts=3 poison_resolved=true elapsed=201ms good_throughput=143.9 msg/s
+produced_order:  [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30]
+completed_order: [1 2 3 4 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 5]
+ordering: poison seq=5 produced at position 5 of 30; completed at position 30 of 30 (delta=25)
+ordering: inversions in completed_order=25 (0 means every completed message finished in produced order)
+>> queue depths:
+work.queue messages=0
+work.dlq   messages=1
+```
+
+Both settings completed all 29 good messages, dead-lettered the poison, and left `work.queue` empty with one message in `work.dlq`. The elapsed times differ by about 10ms, and an earlier run of the same target had them the other way round (208ms at prefetch 1, 186ms at prefetch 5), so the gap is run-to-run noise, not an effect of prefetch. These are single short runs, not a throughput benchmark. The historical native-requeue `make break` run (2026-07-08) processed only 4/29 good messages before its 20-attempt cap.

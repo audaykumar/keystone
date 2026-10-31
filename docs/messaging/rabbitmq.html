@@ -20,16 +20,16 @@
   <div class="callout">
     <strong>Quick brief</strong>
     <ul class="tldr-list">
-      <li><strong>RabbitMQ is a queue, not a log:</strong> a message is removed from the queue once it is acked. There is no offset to rewind and no replay of history; once it's gone, it's gone.</li>
+      <li><strong>Classic and quorum queues consume destructively:</strong> a message is removed from the queue once it is acked. There is no offset to rewind and no replay of history; once it's gone, it's gone.</li>
       <li><strong>Redelivery is the queue's retry mechanism:</strong> a <code>nack</code> with requeue puts the message back for another attempt, at-least-once, exactly like every other retry-based delivery contract.</li>
-      <li><strong>A message that can never succeed needs somewhere to go:</strong> without a dead-letter exchange, a poison message redelivers forever and, bounded by prefetch, can starve the good work behind it.</li>
-      <li><strong>Prefetch is a blast-radius control that cuts both ways:</strong> it bounds how much unacked work one consumer can hold, but a small prefetch is exactly what turns one stuck message into a queue-wide stall.</li>
+      <li><strong>A message that can never succeed needs somewhere to go:</strong> with an unbounded requeue policy, a poison message can redeliver indefinitely and, bounded by prefetch, can starve the good work behind it.</li>
+      <li><strong>Prefetch is a blast-radius control that cuts both ways:</strong> it bounds how much unacked work one consumer can hold, but with native requeue, a small prefetch is exactly what turns one stuck message into a queue-wide stall. A bounded republish-to-tail retry avoids that stall even at prefetch 1.</li>
     </ul>
   </div>
 
   <h2>Mental Model</h2>
   <p>The clearest way to place RabbitMQ is against Kafka, because they answer the same question, "how does a message get from a producer to a consumer reliably," with opposite retention policies. <a href="../kafka/overview.html">Kafka</a> is a log: messages are appended, retained for a configured window, and consumers track their own position (an offset) into that log. Nothing is removed on read; a consumer can rewind, replay, or fall behind and catch up later, and ten different consumer groups can each read the same message at their own pace.</p>
-  <p>RabbitMQ is a queue: a message is handed to exactly one consumer (per queue, among however many are competing for it) and is <strong>deleted from the broker once that consumer acknowledges it</strong>. There is no offset, no replay, and no "read it again later." If a consumer nacks the message instead, or crashes before acking it, RabbitMQ's only options are to redeliver it, or, if it will never succeed, hand it somewhere else. That somewhere else is a dead-letter queue. A log doesn't need one, because a log never has to decide where an unprocessable message goes; it just sits at its offset forever, available to be skipped, replayed, or inspected. A queue has to decide, on every single nack, what happens next.</p>
+  <p>RabbitMQ classic and quorum queues remove a delivery from that queue when acknowledged. RabbitMQ Streams instead provide a replayable log. A log retains records according to policy, not forever; consumers still need a strategy for poison records, often a quarantine topic plus an explicit offset decision. Queue consumers choose whether to acknowledge, requeue, reject, or dead-letter a delivery. See <a href="https://www.rabbitmq.com/docs/3.13/streams">RabbitMQ Streams</a>.</p>
 
   <h2>Ground-Up Explanation</h2>
   <h3>Exchanges, bindings, and routing keys</h3>
@@ -47,8 +47,8 @@
   <h3>Prefetch (QoS) and head-of-line blocking</h3>
   <p><code>basic.qos(prefetch_count=N)</code> caps how many unacked messages the broker will hand a consumer at once. A low prefetch limits how much work one crashed or stuck consumer can be holding onto, which is the point: without it, a fast-producing publisher can hand a slow consumer thousands of unacked messages, all of which get redelivered to someone else the moment that consumer dies. But the same bound has a cost. If one of those in-flight messages can never be acked, a low prefetch means that message occupies a disproportionate share, sometimes all, of the consumer's delivery slots, and nothing behind it in the queue gets delivered until it is resolved. This is <strong>head-of-line blocking</strong>: a queueing-theory term for exactly this shape of problem, one stuck item blocking everything queued behind it, that shows up anywhere work is dispatched from a bounded window rather than dispatched freely.</p>
   <h3>Dead-letter exchanges, TTL, and poison messages</h3>
-  <p>A <strong>dead-letter exchange</strong> is a queue argument (<code>x-dead-letter-exchange</code>, optionally <code>x-dead-letter-routing-key</code>) that tells RabbitMQ where to route a message that is rejected without requeue, or that expires via a per-message or per-queue TTL, or that is dropped because the queue hit a max-length limit. Point it at another exchange bound to a dead-letter queue, and instead of vanishing, the message is preserved somewhere an operator or a replay job can find it. A <strong>poison message</strong> is one a consumer can never successfully process, a malformed payload, a business rule the consumer has no way to satisfy, a bug the consumer will hit on every retry. Without a dead-letter target, the only options for a poison message are "redeliver it forever" or "drop it silently"; neither is acceptable, which is why the dead-letter exchange exists specifically for this case.</p>
-  <p>RabbitMQ does not give a message a running redelivery count the way a database row might carry a version number; the <code>redelivered</code> flag is boolean, not a counter, until a message has actually been dead-lettered at least once, at which point an <code>x-death</code> header array starts recording cycles. To cap retries <em>before</em> the first dead-letter, an application-level counter is the standard approach: a custom header the consumer increments and forwards on each retry, most commonly by republishing to the tail of the queue and acking the original rather than relying on native requeue. That last detail matters: native <code>nack(requeue=true)</code> tends to make the message available again near the front of the queue, which is exactly what causes head-of-line blocking; republishing to the tail is a deliberate choice to trade that away.</p>
+  <p>A <strong>dead-letter exchange</strong> is a queue argument (<code>x-dead-letter-exchange</code>, optionally <code>x-dead-letter-routing-key</code>) that tells RabbitMQ where to route a message that is rejected without requeue, or that expires via a per-message or per-queue TTL, or that is dropped because the queue hit a max-length limit. Point it at another exchange bound to a dead-letter queue, and instead of vanishing, the message is routed toward an inspection queue. Preservation is conditional: default classic-queue dead-letter forwarding lacks publisher confirms and can lose messages if the destination is unavailable. Quorum queues can support configured at-least-once dead-lettering; see <a href="https://www.rabbitmq.com/docs/3.13/dlx#safety">DLX safety</a>. A <strong>poison message</strong> is one a consumer can never successfully process, a malformed payload, a business rule the consumer has no way to satisfy, a bug the consumer will hit on every retry. A dead-letter target is one way to preserve failed work for investigation. Applications can also record or quarantine terminal failures explicitly; a retry policy must decide when to stop requeueing.</p>
+  <p>Classic queues do not give a message a running redelivery count the way a database row might carry a version number; the <code>redelivered</code> flag is boolean, not a counter, until a message has actually been dead-lettered at least once, at which point an <code>x-death</code> header array starts recording cycles. To cap retries <em>before</em> the first dead-letter, an application-level counter is the standard approach: a custom header the consumer increments and forwards on each retry, most commonly by republishing to the tail of the queue and acking the original rather than relying on native requeue. That last detail matters: native <code>nack(requeue=true)</code> tends to make the message available again near the front of the queue, which is exactly what causes head-of-line blocking; republishing to the tail is a deliberate choice to trade that away.</p>
 
   <figure class="terminal-shot">
     <img src="../assets/diagrams/rabbitmq-poison-dlq.svg" alt="Left panel: without a dead-letter target, a poison message is nacked with requeue, redelivered, fails again, and repeats forever, occupying a prefetch slot a good message could use. Right panel: with a retry-count guard and a dead-letter exchange, the same poison message is retried a bounded number of times, then nacked without requeue and routed to a dead-letter queue, leaving the main queue free to drain." />
@@ -71,7 +71,7 @@
       <tr><td>Scaling unit</td><td>Competing consumers on a queue; more consumers, more parallelism, no ordering unit</td><td>Partitions; one consumer per partition per group is the parallelism ceiling</td><td>Nearly unlimited consumer count on standard queues; FIFO queues cap throughput per message group</td></tr>
     </tbody>
   </table>
-  <p>SQS's visibility timeout is worth naming explicitly because it solves a similar failure shape with a different mechanism: a message becomes invisible to other consumers the moment it is received, and reappears automatically if the receiving consumer never confirms it by deleting it in time. RabbitMQ has no per-message visibility timeout for normal acknowledgements; an unacked message is redelivered when the consumer or channel goes away, or when the consumer explicitly rejects or nacks it with requeue. SQS's <code>maxReceiveCount</code> redrive policy does natively what this topic builds by hand for classic queues with a custom header: cap the number of redeliveries before the message is moved somewhere else.</p>
+  <p>SQS's visibility timeout is worth naming explicitly because it solves a similar failure shape with a different mechanism: a message becomes invisible to other consumers the moment it is received, and reappears automatically if the receiving consumer never confirms it by deleting it in time. RabbitMQ does not use SQS-style per-message visibility leases; consumer acknowledgement timeouts can close a channel and requeue its deliveries. Otherwise, an unacked message is redelivered when the consumer or channel goes away, or when the consumer explicitly rejects or nacks it with requeue. SQS's <code>maxReceiveCount</code> redrive policy does natively what this topic builds by hand for classic queues with a custom header: cap the number of redeliveries before the message is moved somewhere else.</p>
 
   <h3>Idempotency still applies</h3>
   <p>Redelivery, whatever the broker, is an at-least-once contract: the same message can be delivered and processed more than once, whether that's a RabbitMQ redelivery after a crash before ack, a Kafka consumer replaying from its last committed offset, or an SQS message reappearing after its visibility timeout expires with no delete. None of these mechanisms make a consumer's side effects idempotent on their own; that is still the consumer's job. See <a href="../delivery-semantics/overview.html">Delivery Semantics</a> for the idempotent-consumer patterns that apply here exactly as they do to a log-based consumer.</p>
@@ -90,14 +90,14 @@
   <p>Prefetch is the production tuning knob. A low prefetch limits how much work a crashed worker can hold, but it makes head-of-line blocking sharper. A higher prefetch improves throughput for fast homogeneous jobs, but increases the amount of in-flight work that must be redelivered after a worker dies.</p>
 
   <h2>Lab Evidence</h2>
-  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/messaging/rabbitmq"><code>labs/messaging/rabbitmq</code></a>: one topology, <code>lab.direct</code> exchange bound to <code>work.queue</code>, <code>lab.dlx</code> bound to <code>work.dlq</code>, and a producer/consumer pair that switches between "no dead-letter target" and "dead-letter target + retry-count guard" purely through queue arguments set at declare time.</p>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/messaging/rabbitmq"><code>labs/messaging/rabbitmq</code></a>: one topology, <code>lab.direct</code> exchange bound to <code>work.queue</code>, <code>lab.dlx</code> bound to <code>work.dlq</code>, and a producer/consumer pair that switches between "no dead-letter target" and "dead-letter target + retry-count guard" through queue arguments and consumer retry policy. The corrected comparison uses prefetch 1 in both modes; a separate prefetch target varies only that setting.</p>
   <div class="run-grid">
     <div class="run-card"><h3><code>make break</code></h3><p>No dead-letter target, prefetch=1. The poison message is nacked with requeue every time, capped at 20 redeliveries so the demo terminates. With only one unacked slot, nothing produced after the poison is ever delivered.</p></div>
-    <div class="run-card"><h3><code>make test</code></h3><p>Dead-letter target + a 3-attempt retry-count guard, prefetch=5. The poison is dead-lettered on the third attempt; the main queue drains to 0, the DLQ holds exactly 1 message, and all good messages complete.</p></div>
+    <div class="run-card"><h3><code>make test</code></h3><p>Dead-letter target + a 3-attempt retry-count guard, prefetch=1. The poison is dead-lettered on the third attempt; the main queue drains to 0, the DLQ holds exactly 1 message, and all good messages complete.</p></div>
     <div class="run-card"><h3>reported metrics</h3><p>Good messages processed, poison redelivery/attempt count, produced order vs completed order, good-message throughput, and queue depths pulled from the management API.</p></div>
   </div>
   <h3>Measured: the same poison message, two outcomes</h3>
-  <p>Real run on 2026-07-08, 30 messages, poison at position 5:</p>
+  <p>Historical run on 2026-07-08, before the corrected controlled comparison: 30 messages, poison at position 5. These values are not evidence for the modified implementation:</p>
   <pre><code>break (no DLQ, prefetch=1):
   good_processed=4/29  poison_attempts=20 (capped)  poison_resolved=false
   good_throughput=169.1 msg/s
@@ -112,7 +112,39 @@ test (DLQ + retry-count guard, MAX_ATTEMPTS=3, prefetch=5):
   completed_order: [1 2 3 4 6 7 8 ... 30 5]       (5 completes dead last)
   ordering: poison produced at position 5, completed at position 30 (delta=25)
   work.queue messages=0   work.dlq messages=1</code></pre>
-  <p>The prefetch difference is the point, not a side detail. At prefetch=1 in <code>break</code>, the broker has exactly one unacked slot and keeps refilling it with the just-requeued poison instead of the 25 good messages queued behind it; only the 4 messages produced before the poison (seq 1-4) are ever delivered, and <code>work.queue</code> ends the run holding 26 messages, the poison plus everything stuck behind it. That is head-of-line blocking measured, not described. At prefetch=5 in <code>test</code>, there is room for other messages to flow around the poison while it retries: all 29 good messages complete in strict produced order, and the poison itself resolves on schedule, three attempts, then dead-lettered, completing dead last (position 30 of 30) instead of never completing at all. The operational signal changes from "a redelivery counter climbing somewhere, unbounded" to "the DLQ depth is 1," a queue depth alert instead of a rate an operator has to notice.</p>
+  <p>These historical results compare combined policies: native requeue without a retry limit versus republish-to-tail with a limit and DLX, and they also used different prefetch values. They do not isolate prefetch. The corrected comparison fixes prefetch at 1; the separate <code>make prefetch</code> experiment holds the bounded republish strategy constant while varying prefetch. Republish-to-tail itself allows later work to advance. Replacement publishes are confirmed and checked for routing before the original is acknowledged; a crash after confirmation but before acknowledgement can still duplicate delivery.</p>
+
+  <h3>Recheck: hold retry policy fixed, vary prefetch (2026-10-31)</h3>
+  <p>Same bounded republish-to-tail policy (30 messages, poison at seq 5, 3 attempts), prefetch 1 then 5, from <code>make prefetch</code>. Build output and blank lines are removed; values are unedited.</p>
+  <pre><code>== prefetch=1 ==
+MODE=test COUNT=30 POISON_AT=5 MAX_ATTEMPTS=3 PROCESS_MS=5 PREFETCH=1 docker compose run --rm producer
+producer: mode=test published=30 poison_at=5 exchange=lab.direct queue=work.queue dlq_on_queue=true
+MODE=test COUNT=30 POISON_AT=5 MAX_ATTEMPTS=3 PROCESS_MS=5 PREFETCH=1 docker compose run --rm consumer
+consumer: attempt 3/3 exhausted; poison seq=5 dead-lettered to work.dlq
+=== consumer report: mode=test prefetch=1 ===
+good_processed=29/29 poison_attempts=3 poison_resolved=true elapsed=191ms good_throughput=151.9 msg/s
+produced_order:  [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30]
+completed_order: [1 2 3 4 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 5]
+ordering: poison seq=5 produced at position 5 of 30; completed at position 30 of 30 (delta=25)
+ordering: inversions in completed_order=25 (0 means every completed message finished in produced order)
+&gt;&gt; queue depths:
+work.queue messages=0
+work.dlq   messages=1
+== prefetch=5 ==
+MODE=test COUNT=30 POISON_AT=5 MAX_ATTEMPTS=3 PROCESS_MS=5 PREFETCH=5 docker compose run --rm producer
+producer: mode=test published=30 poison_at=5 exchange=lab.direct queue=work.queue dlq_on_queue=true
+MODE=test COUNT=30 POISON_AT=5 MAX_ATTEMPTS=3 PROCESS_MS=5 PREFETCH=5 docker compose run --rm consumer
+consumer: attempt 3/3 exhausted; poison seq=5 dead-lettered to work.dlq
+=== consumer report: mode=test prefetch=5 ===
+good_processed=29/29 poison_attempts=3 poison_resolved=true elapsed=201ms good_throughput=143.9 msg/s
+produced_order:  [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30]
+completed_order: [1 2 3 4 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 5]
+ordering: poison seq=5 produced at position 5 of 30; completed at position 30 of 30 (delta=25)
+ordering: inversions in completed_order=25 (0 means every completed message finished in produced order)
+&gt;&gt; queue depths:
+work.queue messages=0
+work.dlq   messages=1</code></pre>
+  <p>Both settings completed all 29 good messages, dead-lettered the poison, and left `work.queue` empty with one message in `work.dlq`. The elapsed times differ by about 10ms, and an earlier run of the same target had them the other way round (208ms at prefetch 1, 186ms at prefetch 5), so the gap is run-to-run noise, not an effect of prefetch. These are single short runs, not a throughput benchmark. The historical native-requeue <code>make break</code> run (2026-07-08) processed only 4/29 good messages before its 20-attempt cap.</p>
 
   <h2>Production Notes</h2>
   <ul>

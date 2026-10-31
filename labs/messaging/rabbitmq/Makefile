@@ -11,11 +11,11 @@ BREAK_ENV := MODE=break COUNT=30 POISON_AT=5 PREFETCH=1 BREAK_CAP=20 PROCESS_MS=
 
 # Test: main queue carries x-dead-letter-exchange. Poison retries via a
 # republish-to-tail with an incremented x-retry-count header up to
-# MAX_ATTEMPTS, then the final nack (no requeue) dead-letters it. A wider
-# prefetch here shows the ordering-loss measurement without also blocking.
-TEST_ENV := MODE=test COUNT=30 POISON_AT=5 PREFETCH=5 MAX_ATTEMPTS=3 PROCESS_MS=5
+# MAX_ATTEMPTS, then the final nack (no requeue) dead-letters it. Both modes use prefetch 1, so the comparison changes retry policy, not prefetch.
+TEST_BASE := MODE=test COUNT=30 POISON_AT=5 MAX_ATTEMPTS=3 PROCESS_MS=5
+TEST_ENV := $(TEST_BASE) PREFETCH=1
 
-.PHONY: build up down reset logs break test dlq depths
+.PHONY: build up down reset logs break test dlq depths prefetch
 
 build: ## Build the driver image
 	$(COMPOSE) build producer
@@ -64,3 +64,16 @@ down: ## Remove containers, network, volumes, and the built image
 	$(COMPOSE) --profile tools down -v --rmi local --remove-orphans
 
 reset: down up ## Tear down and rebuild clean
+
+# Hold the republish-to-tail retry strategy fixed while changing only prefetch.
+prefetch: build up ## Same retry policy, prefetch 1 then 5, with queue depths after each
+	@printf "\n== prefetch=1 ==\n"
+	$(TEST_BASE) PREFETCH=1 $(COMPOSE) run --rm producer
+	$(TEST_BASE) PREFETCH=1 $(COMPOSE) run --rm consumer
+	@sleep 6
+	@$(MAKE) depths
+	@printf "\n== prefetch=5 ==\n"
+	$(TEST_BASE) PREFETCH=5 $(COMPOSE) run --rm producer
+	$(TEST_BASE) PREFETCH=5 $(COMPOSE) run --rm consumer
+	@sleep 6
+	@$(MAKE) depths

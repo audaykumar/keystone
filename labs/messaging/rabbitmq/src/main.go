@@ -127,6 +127,42 @@ func purgeTopology(conn *amqp.Connection) {
 	}
 }
 
+// confirmedPublisher publishes one message at a time and waits for its confirm.
+// Callers treat a publish error as fatal (must exits). A caller that retried
+// after a timeout would need to match the confirm's delivery tag, or a late
+// confirm could be read as the next publish's.
+type confirmedPublisher struct {
+	ch       *amqp.Channel
+	confirms <-chan amqp.Confirmation
+	returns  <-chan amqp.Return
+}
+
+func newConfirmedPublisher(ch *amqp.Channel) *confirmedPublisher {
+	must(ch.Confirm(false), "enable publisher confirms")
+	return &confirmedPublisher{ch: ch, confirms: ch.NotifyPublish(make(chan amqp.Confirmation, 1)), returns: ch.NotifyReturn(make(chan amqp.Return, 1))}
+}
+func (p *confirmedPublisher) publish(exchange, key string, msg amqp.Publishing) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := p.ch.PublishWithContext(ctx, exchange, key, true, false, msg); err != nil {
+		return err
+	}
+	select {
+	case c, ok := <-p.confirms:
+		if !ok || !c.Ack {
+			return fmt.Errorf("publish was not confirmed")
+		}
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	select {
+	case ret := <-p.returns:
+		return fmt.Errorf("unroutable publish: %d %s", ret.ReplyCode, ret.ReplyText)
+	default:
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // producer
 // ---------------------------------------------------------------------------
@@ -146,6 +182,7 @@ func runProducer() {
 	defer ch.Close()
 	must(declareTopology(ch, mode == "test"), "declare topology")
 
+	publisher := newConfirmedPublisher(ch)
 	published := 0
 	for seq := 1; seq <= count; seq++ {
 		kind := "good"
@@ -157,7 +194,7 @@ func runProducer() {
 			"x-seq":  int32(seq),
 			"x-kind": kind,
 		}
-		err := ch.PublishWithContext(context.Background(), mainExchange, mainRoutingKey, false, false, amqp.Publishing{
+		err := publisher.publish(mainExchange, mainRoutingKey, amqp.Publishing{
 			ContentType:  "text/plain",
 			Body:         []byte(body),
 			Headers:      headers,
@@ -189,6 +226,7 @@ func runConsumer() {
 	ch, err := conn.Channel()
 	must(err, "open channel")
 	defer ch.Close()
+	publisher := newConfirmedPublisher(ch)
 	must(declareTopology(ch, mode == "test"), "declare topology")
 	must(ch.Qos(prefetch, 0, false), "set qos")
 
@@ -256,7 +294,7 @@ consumeLoop:
 						"x-kind":        "poison",
 						"x-retry-count": int32(attempt),
 					}
-					pubErr := ch.PublishWithContext(context.Background(), mainExchange, mainRoutingKey, false, false, amqp.Publishing{
+					pubErr := publisher.publish(mainExchange, mainRoutingKey, amqp.Publishing{
 						ContentType:  d.ContentType,
 						Body:         d.Body,
 						Headers:      retryHeaders,
@@ -288,7 +326,7 @@ consumeLoop:
 		throughput = float64(goodProcessed) / elapsed.Seconds()
 	}
 
-	fmt.Printf("\n=== consumer report: mode=%s ===\n", mode)
+	fmt.Printf("\n=== consumer report: mode=%s prefetch=%d ===\n", mode, prefetch)
 	fmt.Printf("good_processed=%d/%d poison_attempts=%d poison_resolved=%v elapsed=%s good_throughput=%.1f msg/s\n",
 		goodProcessed, count-1, poisonAttempts, poisonResolved, elapsed.Round(time.Millisecond), throughput)
 	fmt.Printf("produced_order:  %v\n", producedOrder)
