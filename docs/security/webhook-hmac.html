@@ -48,13 +48,13 @@
   <h3>Signed string</h3>
   <p>A simple signed string is:</p>
   <pre><code>timestamp + "." + nonce + "." + raw_body</code></pre>
-  <p>The dots are not security-critical; they only make field boundaries unambiguous. The important part is that every value used for freshness is inside the MAC. If timestamp or nonce are unsigned, an attacker can edit them while keeping the old body signature.</p>
+  <p>Require the nonce to contain no period, and reject invalid nonces before using this format. With an integer timestamp and delimiter-free nonce, the first two separators identify the fields unambiguously; the remaining bytes are the raw body. Delimiters alone are not sufficient if fields may contain them. Every freshness value must be authenticated.</p>
 
   <h3>Timestamp tolerance</h3>
   <p>The receiver should reject timestamps outside a small tolerance window. The window needs to allow normal clock skew and delivery delay, but not long-term reuse. Five minutes is common for general webhooks. Higher-risk actions can use a shorter window when both sides have reliable clocks.</p>
 
   <h3>Nonce and event-id storage</h3>
-  <p>A nonce is a unique delivery id. Store it at least as long as the timestamp tolerance window. If the same nonce appears again, reject it as replay. In systems that already have durable idempotency records, the provider's event id can do the same job and also protect business effects from duplicate delivery.</p>
+  <p>A nonce identifies a delivery. Retain it until the signed timestamp plus the allowed tolerance has passed, not merely for one tolerance interval after receipt. A timestamp accepted near the future-skew limit can remain valid for up to twice the tolerance after first receipt. Atomically check and store the nonce. Durable event-id records can additionally prevent duplicate business effects.</p>
 
   <h3>Constant-time compare</h3>
   <p>Normal equality can return as soon as it finds the first differing byte. In some settings, that timing can leak how many bytes matched. Constant-time comparison checks all bytes before returning. Decode both MACs to bytes, require equal length, then use the language's constant-time compare function.</p>

@@ -40,28 +40,27 @@ func main() {
 
 type nonceStore struct {
 	mu       sync.Mutex
-	ttl      time.Duration
 	nonces   map[string]time.Time
 	accepted atomic.Int64
 	rejected atomic.Int64
 }
 
-func newNonceStore(ttl time.Duration) *nonceStore {
-	return &nonceStore{ttl: ttl, nonces: map[string]time.Time{}}
+func newNonceStore() *nonceStore {
+	return &nonceStore{nonces: map[string]time.Time{}}
 }
 
-func (s *nonceStore) seenBefore(nonce string, now time.Time) bool {
+func (s *nonceStore) seenBefore(nonce string, now, expiresAt time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for n, expiresAt := range s.nonces {
-		if now.After(expiresAt) {
+	for n, exp := range s.nonces {
+		if now.After(exp) {
 			delete(s.nonces, n)
 		}
 	}
 	if _, ok := s.nonces[nonce]; ok {
 		return true
 	}
-	s.nonces[nonce] = now.Add(s.ttl)
+	s.nonces[nonce] = expiresAt
 	return false
 }
 
@@ -70,7 +69,7 @@ func runServer() {
 	verifyTimestamp := getenvBool("VERIFY_TIMESTAMP", true)
 	verifyNonce := getenvBool("VERIFY_NONCE", true)
 	tolerance := time.Duration(getenvInt("TOLERANCE_S", 300)) * time.Second
-	store := newNonceStore(tolerance)
+	store := newNonceStore()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -103,6 +102,13 @@ func runServer() {
 var errReplay = errors.New("replay detected")
 
 func verify(r *http.Request, body, secret []byte, verifyTimestamp, verifyNonce bool, tolerance time.Duration, store *nonceStore) error {
+	return verifyAt(r, body, secret, verifyTimestamp, verifyNonce, tolerance, store, time.Now())
+}
+
+func verifyAt(r *http.Request, body, secret []byte, verifyTimestamp, verifyNonce bool, tolerance time.Duration, store *nonceStore, now time.Time) error {
+	if verifyNonce && !verifyTimestamp {
+		return errors.New("nonce protection requires timestamp validation")
+	}
 	tsText := r.Header.Get(headerTimestamp)
 	nonce := r.Header.Get(headerNonce)
 	got := r.Header.Get(headerSignature)
@@ -110,13 +116,16 @@ func verify(r *http.Request, body, secret []byte, verifyTimestamp, verifyNonce b
 		return errors.New("missing signature headers")
 	}
 
+	if strings.Contains(nonce, ".") {
+		return errors.New("nonce must not contain a period")
+	}
 	ts, err := strconv.ParseInt(tsText, 10, 64)
 	if err != nil {
 		return errors.New("bad timestamp")
 	}
 	if verifyTimestamp {
 		signedAt := time.Unix(ts, 0)
-		age := time.Since(signedAt)
+		age := now.Sub(signedAt)
 		if age < -tolerance || age > tolerance {
 			return errors.New("timestamp outside tolerance")
 		}
@@ -126,7 +135,7 @@ func verify(r *http.Request, body, secret []byte, verifyTimestamp, verifyNonce b
 	if !constantTimeSignatureEqual(got, expected) {
 		return errors.New("bad signature")
 	}
-	if verifyNonce && store.seenBefore(nonce, time.Now()) {
+	if verifyNonce && store.seenBefore(nonce, now, time.Unix(ts, 0).Add(tolerance)) {
 		return errReplay
 	}
 	return nil

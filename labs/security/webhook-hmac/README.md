@@ -25,6 +25,7 @@ The signed string is:
 
 ```text
 timestamp + "." + nonce + "." + raw_body
+# nonce must not contain a period; receiver enforces this
 ```
 
 The lab has two receiver modes:
@@ -74,8 +75,8 @@ make test:
   how much of the signature matched.
 - Timestamp checks need a tolerance window for clock skew. Five minutes is a
   common starting point; high-risk flows can use a shorter window.
-- Nonce or event-id storage must live at least as long as the timestamp
-  tolerance window. For durable webhook processing, the event id is often stored
+- Nonce storage must last through signed_timestamp + tolerance. With future
+  clock skew accepted, that can be up to two tolerance intervals after receipt. For durable webhook processing, the event id is often stored
   with the idempotency record.
 - Replay protection and idempotency are related but separate. Replay protection
   rejects duplicate deliveries at the security boundary; idempotency prevents a
