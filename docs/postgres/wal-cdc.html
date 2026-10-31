@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PostgreSQL WAL for CDC | keystone</title>
+  <link rel="stylesheet" href="../assets/topic.css" />
+  <link rel="stylesheet" href="../assets/diagrams.css" />
+</head>
+<body>
+<div id="site-nav"></div>
+<script src="../components/nav.js?v=logo1"></script>
+
+<main>
+  <div class="crumbs"><a href="overview.html">PostgreSQL</a><span>/</span><span>WAL for CDC</span></div>
+  <h1>PostgreSQL WAL for CDC</h1>
+  <p class="subtitle">CDC works because PostgreSQL already writes every committed change to an ordered log. Logical decoding turns that log into row-level changes a connector can resume from, and a replication slot is the bookmark that makes resuming safe.</p>
+
+  <h2>TLDR</h2>
+  <div class="callout">
+    <strong>Quick brief</strong>
+    <ul class="tldr-list">
+      <li><strong>WAL is the source stream:</strong> PostgreSQL records changes in WAL before changed table pages have to reach disk.</li>
+      <li><strong>Logical decoding emits changes at commit:</strong> the decoder reads all WAL, buffers each transaction, and hands it over only once it commits. Since PostgreSQL 14 a plugin can opt in to streaming large in-progress transactions, which makes aborts the consumer's problem.</li>
+      <li><strong>LSNs give order and resume points:</strong> a connector should resume from log position, not from wall-clock time.</li>
+      <li><strong>A slot pins WAL through <code>restart_lsn</code>:</strong> a stopped connector means WAL piles up on disk. <code>restart_lsn</code> moves only after the consumer confirms and decoding passes a new running-transactions record, not on every confirmation.</li>
+      <li><strong>Capping retention costs the consumer:</strong> <code>max_slot_wal_keep_size</code> protects the disk by invalidating the slot, after which the connector must resnapshot.</li>
+      <li><strong>Debezium is not magic:</strong> it is an operator-friendly reader of PostgreSQL logical changes, with offsets, snapshots, schema handling, and delivery to Kafka.</li>
+    </ul>
+  </div>
+
+  <h2>Mental Model</h2>
+  <p>Think of WAL as PostgreSQL's durable transaction tape. Heap pages and indexes are the database's current shape, but WAL is the ordered record of how that shape changed. With default settings, a commit is acknowledged once the relevant WAL is durable. After a crash, PostgreSQL replays WAL. For CDC, a logical decoder reads that same stream, reassembles it per transaction, and converts storage-level changes into table-level changes at commit.</p>
+  <p>A replication slot is the connector's bookmark. It says, "do not remove the WAL I still need." That is what lets a connector stop and resume without missing committed changes. It is also why CDC has an operational failure mode: if the connector stays stopped, PostgreSQL keeps the WAL behind the slot and disk usage grows.</p>
+
+  <figure class="terminal-shot">
+    <img src="../assets/diagrams/postgres-wal-cdc-flow.svg" alt="Flow from service writes to PostgreSQL WAL, a logical replication slot, and a CDC connector, with retained WAL growing behind the slot when the consumer stops." />
+  </figure>
+
+  <h2>Ground-Up Explanation</h2>
+  <h3>WAL before data pages</h3>
+  <p>PostgreSQL does not need to flush every modified table page before acknowledging a commit. It must first flush the WAL records that describe the change. Later, checkpoints and background writes can move dirty heap and index pages to their files. This is the write-ahead rule: the recovery log reaches durable storage before the data page it protects.</p>
+
+  <h3>Physical versus logical replication</h3>
+  <p>Physical replication copies WAL as storage changes. It is good for standby databases because it reproduces the same cluster state. Logical decoding can expose table changes through an output plugin: insert, update, delete, truncate, begin, and commit, subject to which tables are selected and what row identity is recorded. CDC tools use logical decoding because downstream systems usually need business rows and event payloads, not database page bytes.</p>
+  <p>The output plugin sets the format and the table selection. <code>test_decoding</code> prints every table as text and is for learning. <code>pgoutput</code>, the plugin Debezium and built-in logical replication use, emits a binary protocol for the tables named in a publication.</p>
+
+  <h3>Why commit boundaries matter</h3>
+  <p>A CDC consumer must not publish events from a transaction that might roll back. The decoder reads WAL in write order, which interleaves concurrent transactions, so it buffers each transaction's changes in a reorder buffer and emits them in commit order only when the commit record arrives. If a transaction inserts a state row and an outbox row, consumers see both as one ordered unit, and only after commit.</p>
+  <p>The cost lands on the server. A large transaction occupies the reorder buffer until it commits, and past <code>logical_decoding_work_mem</code> (64MB by default) the buffer spills to disk under <code>pg_replslot/</code>. It also delays visibility of that transaction downstream. Since PostgreSQL 14, a plugin can opt in to streaming large in-progress transactions before commit, trading that delay for a stream-abort the consumer must handle.</p>
+
+  <h3>What a row change carries: replica identity</h3>
+  <p>An INSERT carries the new row. An UPDATE or DELETE also needs to identify which row it touched, and that is controlled per table by <code>REPLICA IDENTITY</code>, applied when the change is written to WAL.</p>
+  <ul>
+    <li><strong>DEFAULT:</strong> the primary key. A DELETE carries only the key. An UPDATE carries the new row, and the old key only if the key itself changed.</li>
+    <li><strong>FULL:</strong> the entire old row, at the cost of more WAL per change.</li>
+    <li><strong>No primary key:</strong> with DEFAULT there is nothing to identify the row. A <code>pgoutput</code> publication rejects UPDATE and DELETE on such a table outright.</li>
+    <li><strong>Large values:</strong> unchanged large (TOASTed) values may be left out of a change, so a consumer cannot assume every column is present.</li>
+    <li><strong>DDL is not decoded:</strong> altering a table, including its replica identity, produces no change event, so schema changes need their own coordination with connectors.</li>
+  </ul>
+
+  <h2>Concept Deep Dive</h2>
+  <h3>The pieces</h3>
+  <table>
+    <thead><tr><th>Piece</th><th>Role in CDC</th><th>Operational question</th></tr></thead>
+    <tbody>
+      <tr><td>WAL</td><td>Ordered durable record of database changes.</td><td>How much WAL is being generated and retained on disk?</td></tr>
+      <tr><td>LSN</td><td>Log Sequence Number, a position in WAL.</td><td>Where did the connector last safely reach?</td></tr>
+      <tr><td>Logical decoding</td><td>Turns WAL into table-level changes, per transaction, at commit.</td><td>Which tables and publications are included?</td></tr>
+      <tr><td>Replication slot</td><td>Pins the WAL a consumer still needs.</td><td>Is any slot lagging, inactive, or invalidated?</td></tr>
+      <tr><td><code>confirmed_flush_lsn</code></td><td>The latest position the consumer has confirmed.</td><td>How far behind the current WAL position is it?</td></tr>
+      <tr><td><code>restart_lsn</code></td><td>The oldest WAL the slot still needs. This is what pins WAL.</td><td>Is it advancing, or stuck behind a long transaction or a stalled consumer?</td></tr>
+      <tr><td>Output plugin</td><td>Formats decoded changes, for example <code>pgoutput</code> or <code>test_decoding</code>.</td><td>Can the connector parse the format and schema changes?</td></tr>
+      <tr><td>Connector offset</td><td>External record of what the connector has emitted.</td><td>Can it restart without duplicates or gaps?</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Ordering boundary</h3>
+  <p>WAL order is database order, not user-interface time. Two requests can arrive in one order and commit in another. CDC follows the commit order. For an outbox table, that is usually what you want: downstream systems react to committed state, not attempted state.</p>
+
+  <h3>Snapshots and streaming</h3>
+  <p>A new connector often needs a starting point. It may take an initial snapshot of existing rows, then stream new changes from a slot. The handoff matters: the connector must know which WAL position corresponds to the snapshot boundary, otherwise it can miss rows or emit duplicates. Mature CDC tooling exists largely to manage that boundary, schema changes, retries, and offsets.</p>
+
+  <h3>Retention: two cursors, one cap</h3>
+  <p>A slot has two positions. <code>confirmed_flush_lsn</code> is what the consumer has acknowledged. <code>restart_lsn</code> is the oldest WAL the decoder would need to start over from, and it is the one that holds WAL on disk. They are not the same, and confirming does not immediately move <code>restart_lsn</code>:</p>
+  <ul>
+    <li>Decoding must reassemble transactions, so it can only restart from a point where no earlier transaction is still open. PostgreSQL logs these points as running-transactions records, written at checkpoints and periodically by a background process.</li>
+    <li><code>restart_lsn</code> advances when decoding has passed such a record and the consumer has confirmed past it. It cannot pass the start of a transaction that was still running at that record.</li>
+    <li>Once it moves, the next checkpoint is allowed to remove or recycle the older segments. Recycling renames a segment for future use instead of deleting it, so file counts alone understate what was released.</li>
+  </ul>
+  <p><code>pg_replication_slots.wal_status</code> reports where the slot stands against the cap: <code>reserved</code> (within <code>max_wal_size</code>), <code>extended</code> (beyond it, kept by the slot), <code>unreserved</code> (about to be lost), and <code>lost</code>. By default a slot can pin unlimited WAL. <code>max_slot_wal_keep_size</code> sets a limit; once the pinned WAL exceeds it, a checkpoint invalidates the slot and its WAL can be removed. That protects the primary's disk and sacrifices the consumer, which can no longer resume and must resnapshot. A full <code>pg_wal</code> volume is worse: the server can fail outright.</p>
+
+  <h2>Implementation Details</h2>
+  <ul>
+    <li><strong>Enable logical WAL intentionally:</strong> set <code>wal_level=logical</code> and allow enough replication slots and WAL senders for the connectors you run.</li>
+    <li><strong>Monitor slots:</strong> watch <code>pg_replication_slots</code>, especially <code>active</code>, <code>wal_status</code>, <code>restart_lsn</code>, and <code>confirmed_flush_lsn</code>, plus the actual size of <code>pg_wal</code>.</li>
+    <li><strong>Keep transactions bounded:</strong> large commits become large decoding units, spill to disk, and delay event visibility.</li>
+    <li><strong>Choose replica identity deliberately:</strong> tables you publish should have a primary key; use FULL only when consumers need the old row.</li>
+    <li><strong>Use stable event identifiers:</strong> logical decoding and Debezium are normally at-least-once at the edge, so consumers still need idempotency.</li>
+    <li><strong>Plan schema changes:</strong> DDL is not decoded, so database migrations must be compatible with deployed connectors and consumers.</li>
+  </ul>
+
+  <h3>Production examples</h3>
+  <p>A shipping service can write a state row and an outbox row in one transaction. Debezium reads the committed outbox insert from PostgreSQL WAL and publishes an <code>ItemShipped</code> event to Kafka. If Debezium restarts, it resumes from its slot and connector offset. Consumers may still see duplicates, but they should not miss the committed event as long as the slot and connector state are healthy.</p>
+  <p>A reporting pipeline can stream committed table changes into a warehouse. The source database should alert on slot lag, retained WAL, connector errors, and snapshot duration. The warehouse should treat the stream as ordered by source log position, not by row timestamps.</p>
+
+  <h2>Lab Evidence</h2>
+  <p>The runnable lab is <a href="https://github.com/audaykumar/keystone/tree/main/labs/postgres/wal-cdc"><code>labs/postgres/wal-cdc</code></a>: PostgreSQL 17.2 with <code>wal_level=logical</code>, deliberately small WAL settings (<code>min_wal_size=32MB</code>, <code>max_wal_size=64MB</code>), an <code>orders</code> table, an outbox-like <code>order_events</code> table, and the built-in <code>test_decoding</code> plugin. The consumer is the SQL functions <code>pg_logical_slot_get_changes</code> and <code>pg_logical_slot_peek_changes</code>, so the slot is never <code>active</code> here; a real connector holds it open through a walsender.</p>
+
+  <div class="run-grid">
+    <div class="run-card"><h3><code>make test</code></h3><p>Hold a transaction open, prove its rows reached WAL, peek the slot, then commit and consume. Asserts and fails if the rows are visible early.</p></div>
+    <div class="run-card"><h3><code>make break</code></h3><p>Write ~160MB with the consumer stalled, show <code>pg_wal</code> pinned, then consume and watch <code>restart_lsn</code> and the checkpoint release it.</p></div>
+    <div class="run-card"><h3><code>make cap</code></h3><p>Set a 16MB <code>max_slot_wal_keep_size</code>, stall the consumer, and watch the slot get invalidated.</p></div>
+    <div class="run-card"><h3><code>make identity</code></h3><p>UPDATE and DELETE under DEFAULT and FULL replica identity.</p></div>
+  </div>
+
+  <p>Output below is from real runs. Blank lines and psql's "Expanded display is on." lines are removed; values are unedited. LSNs and timings differ per run. The README has the complete output.</p>
+
+  <h3>Measured: uncommitted rows are invisible</h3>
+  <p>The open transaction has written (<code>backend_xid</code> is set). A non-transactional probe message, emitted with <code>flush</code> after the open transaction's records, makes sure that WAL reached disk before the peek. Seeing the probe while <code>open_tx_rows</code> is 0 shows the decoder read past the open transaction and still held its rows back. Afterward the probe is decoded before the transaction even though its LSN is higher, because output follows commit order.</p>
+  <pre><code>== WAL CDC test: only committed changes leave the slot ==
+A transaction inserts an order, holds open, then commits.
+The slot is peeked only after the open transaction has provably written.
+&gt;&gt; open transaction state (backend_xid set means it has written):
+ application_name | state  | backend_xid 
+------------------+--------+-------------
+ wal-cdc-open-tx  | active |         744
+(1 row)
+&gt;&gt; before COMMIT, peeking the slot:
+ open_tx_rows | probe_seen
+--------------+------------
+            0 | 1
+&gt;&gt; after COMMIT, consuming decoded WAL (probe message first, then the transaction):
+0/194D388 | 0 | message: transactional: 0 prefix: cdc-probe, sz: 13 content:before-commit
+0/194CF68 | 744 | BEGIN 744
+0/194CFD0 | 744 | table public.orders: INSERT: id[bigint]:1 order_ref[text]:'ord-open' status[text]:'created' total_cents[integer]:4200 notes[text]:'' created_at[timestamp with time zone]:'2026-10-31 06:33:47.803143+00'
+0/194D1E8 | 744 | table public.order_events: INSERT: id[bigint]:1 order_ref[text]:'ord-open' event_type[text]:'OrderCreated' payload[jsonb]:'{"source": "open-tx"}' created_at[timestamp with time zone]:'2026-10-31 06:33:47.803143+00'
+0/194D3B8 | 744 | COMMIT 744</code></pre>
+
+  <h3>Measured: a stalled consumer pins WAL on disk</h3>
+  <p>With <code>max_wal_size</code> at 64MB, steps 1 to 3 show what the slot costs. After writing about 160MB and a <code>CHECKPOINT</code>, <code>pg_wal</code> holds 192MB, the oldest segment is the slot's own, <code>wal_status</code> is <code>extended</code>, and the checkpoint removed 0 files. Nothing else was holding WAL here (<code>wal_keep_size=0</code>, archiving off, one slot).</p>
+  <pre><code>== WAL CDC break: a stalled consumer pins WAL ==
+max_wal_size is 64MB. WAL beyond that, still on disk after CHECKPOINT, is
+held by the slot (wal_keep_size=0, archiving off, no other slots).
+&gt;&gt; 1. baseline, slot freshly consumed
+-[ RECORD 1 ]------------+-------------------------
+total_files              | 1
+pg_wal_size              | 16 MB
+max_wal_size             | 64MB
+segs_at_or_behind_insert | 1
+oldest_seg               | 000000010000000000000001
+slot_restart_seg         | 000000010000000000000001
+current_seg              | 000000010000000000000001
+-[ RECORD 1 ]---------+------------------------------
+slot_name             | orders_cdc
+active                | f
+inactive_since        | 2026-10-31 06:33:57.101723+00
+wal_status            | reserved
+invalidation_reason   | 
+restart_lsn           | 0/194D788
+confirmed_flush_lsn   | 0/194FAF0
+catalog_xmin          | 746
+wal_since_restart_lsn | 9272 bytes
+consumer_lag          | 208 bytes
+safe_wal_size         | 
+&gt;&gt; 2. writing ~160MB while nobody consumes the slot
+batches=15 rows=150000 wal_written=167 MB (target 160 MB)
+checkpoint: 2026-10-31 06:34:00.890 UTC [54] LOG:  checkpoint complete: wrote 1404 buffers (8.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.006 s, sync=0.004 s, total=0.014 s; sync files=4, longest=0.002 s, average=0.001 s; distance=12811 kB, estimate=44147 kB; lsn=0/C0832A8, redo lsn=0/C083250
+&gt;&gt; 3. after CHECKPOINT: pg_wal stays above max_wal_size, oldest segment is the slot's
+-[ RECORD 1 ]------------+-------------------------
+total_files              | 12
+pg_wal_size              | 192 MB
+max_wal_size             | 64MB
+segs_at_or_behind_insert | 12
+oldest_seg               | 000000010000000000000001
+slot_restart_seg         | 000000010000000000000001
+current_seg              | 00000001000000000000000C
+-[ RECORD 1 ]---------+------------------------------
+slot_name             | orders_cdc
+active                | f
+inactive_since        | 2026-10-31 06:33:57.101723+00
+wal_status            | extended
+invalidation_reason   | 
+restart_lsn           | 0/194D788
+confirmed_flush_lsn   | 0/194FAF0
+catalog_xmin          | 746
+wal_since_restart_lsn | 167 MB
+consumer_lag          | 167 MB
+safe_wal_size         | 
+PASS: pg_wal above max_wal_size, nothing removed, wal_status=extended</code></pre>
+
+  <h3>Measured: confirming is not releasing</h3>
+  <p>Consuming moved <code>confirmed_flush_lsn</code> to the insert position at once, but <code>restart_lsn</code> barely moved and the slot still reported 167MB since <code>restart_lsn</code>. It passed the marker only after <code>pg_log_standby_snapshot()</code> forced a running-transactions record and a second consume confirmed past it. Only then did the next checkpoint remove 6 segments and recycle 3, and the oldest segment moved forward from <code>...01</code> to <code>...0A</code>. It stopped two segments short of the slot's <code>...0C</code>. Those two are not pinned by the slot: restarting the server and checkpointing again (step 7) removes both and leaves the oldest segment equal to the slot's, while a second checkpoint alone does not. The removal cutoff in the running server lags the slot's actual <code>restart_lsn</code>. The lab does not trace which internal state holds it, and in ad hoc runs the leftover varied from none to a couple of segments. The number of rounds varies per run, so the script loops up to five times.</p>
+  <p>The consume ran with <code>logical_decoding_work_mem</code> at 1MB, so each ~10MB transaction spilled to <code>pg_replslot/</code>: 15 transactions, 153MB spilled. With the default 64MB these would decode in memory.</p>
+  <pre><code>&gt;&gt; 4. consume the slot (logical_decoding_work_mem=1MB so the reorder buffer spills)
+SET
+ decoded_rows 
+--------------
+       150030
+(1 row)
+-[ RECORD 1 ]---------+------------------------------
+slot_name             | orders_cdc
+active                | f
+inactive_since        | 2026-10-31 06:34:02.495698+00
+wal_status            | extended
+invalidation_reason   | 
+restart_lsn           | 0/194FB10
+confirmed_flush_lsn   | 0/C083320
+catalog_xmin          | 748
+wal_since_restart_lsn | 167 MB
+consumer_lag          | 0 bytes
+safe_wal_size         | 
+ slot_name  | spill_txns | spill_count | spill_bytes 
+------------+------------+-------------+-------------
+ orders_cdc |         15 |         165 | 153 MB
+(1 row)
+&gt;&gt; 5. restart_lsn only moves once decoding passes a new running-xacts record
+   marker (insert position before consuming) = 0/C083320
+   pg_log_standby_snapshot() + consume, round 1: restart_lsn &gt;= marker? f
+   pg_log_standby_snapshot() + consume, round 2: restart_lsn &gt;= marker? t
+   restart_lsn passed the marker after 2 extra round(s)
+-[ RECORD 1 ]---------+------------------------------
+slot_name             | orders_cdc
+active                | f
+inactive_since        | 2026-10-31 06:34:03.274792+00
+wal_status            | reserved
+invalidation_reason   | 
+restart_lsn           | 0/C083358
+confirmed_flush_lsn   | 0/C083390
+catalog_xmin          | 763
+wal_since_restart_lsn | 56 bytes
+consumer_lag          | 0 bytes
+safe_wal_size         | 
+&gt;&gt; 6. now a checkpoint can remove or recycle the old segments
+checkpoint: 2026-10-31 06:34:03.604 UTC [54] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 6 removed, 3 recycled; write=0.001 s, sync=0.001 s, total=0.018 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=39732 kB; lsn=0/C0833E8, redo lsn=0/C083390
+-[ RECORD 1 ]------------+-------------------------
+total_files              | 6
+pg_wal_size              | 96 MB
+max_wal_size             | 64MB
+segs_at_or_behind_insert | 3
+oldest_seg               | 00000001000000000000000A
+slot_restart_seg         | 00000001000000000000000C
+current_seg              | 00000001000000000000000C
+PASS: oldest segment moved forward 000000010000000000000001 -&gt; 00000001000000000000000A
+&gt;&gt; 7. segments left behind the slot are held by server memory, not by the slot
+oldest segment 00000001000000000000000A is older than the slot's 00000001000000000000000C. A second plain checkpoint:
+checkpoint: 2026-10-31 06:34:04.182 UTC [54] LOG:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.011 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=35759 kB; lsn=0/C0834B8, redo lsn=0/C083460
+oldest segment after the second checkpoint: 00000001000000000000000A (slot: 00000001000000000000000C)
+Still older than the slot's. Restarting the server and checkpointing again:
+checkpoint: 2026-10-31 06:34:06.991 UTC [26] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 2 removed, 0 recycled; write=0.001 s, sync=0.003 s, total=0.014 s; sync files=2, longest=0.002 s, average=0.002 s; distance=0 kB, estimate=0 kB; lsn=0/C083600, redo lsn=0/C0835A8
+-[ RECORD 1 ]------------+-------------------------
+total_files              | 4
+pg_wal_size              | 64 MB
+max_wal_size             | 64MB
+segs_at_or_behind_insert | 1
+oldest_seg               | 00000001000000000000000C
+slot_restart_seg         | 00000001000000000000000C
+current_seg              | 00000001000000000000000C
+PASS: after restart + CHECKPOINT the oldest segment equals the slot's</code></pre>
+
+  <h3>Measured: the cap invalidates the slot</h3>
+  <p>With a 16MB cap and about 66MB written while stalled, a checkpoint marks the slot <code>lost</code> and clears <code>restart_lsn</code>. The consumer can no longer read it. Recovery is drop, recreate, and resnapshot, and the changes in between are gone from the stream.</p>
+  <pre><code>== WAL CDC cap: max_slot_wal_keep_size invalidates a stalled slot ==
+&gt;&gt; max_slot_wal_keep_size in a fresh session: 16MB
+&gt;&gt; 1. before writes: slot is reserved, safe_wal_size is populated
+-[ RECORD 1 ]---------+------------------------------
+slot_name             | orders_cdc
+active                | f
+inactive_since        | 2026-10-31 06:32:32.907743+00
+wal_status            | reserved
+invalidation_reason   | 
+restart_lsn           | 0/C0835A8
+confirmed_flush_lsn   | 0/C08CC20
+catalog_xmin          | 763
+wal_since_restart_lsn | 38 kB
+consumer_lag          | 0 bytes
+safe_wal_size         | 31 MB
+&gt;&gt; 2. writing ~64MB with the slot stalled
+batches=6 rows=60000 wal_written=66 MB (target 64 MB)
+&gt;&gt; 3. after CHECKPOINT: the slot is invalidated
+-[ RECORD 1 ]---------+------------------------------
+slot_name             | orders_cdc
+active                | f
+inactive_since        | 2026-10-31 06:32:35.496219+00
+wal_status            | lost
+invalidation_reason   | wal_removed
+restart_lsn           | 
+confirmed_flush_lsn   | 0/C08CC20
+catalog_xmin          | 763
+wal_since_restart_lsn | 
+consumer_lag          | 67 MB
+safe_wal_size         | 
+&gt;&gt; 4. the consumer can no longer read the slot:
+ERROR:  can no longer get changes from replication slot "orders_cdc"
+DETAIL:  This slot has been invalidated because it exceeded the maximum reserved size.
+Recovery is drop the slot, recreate it, and resnapshot: the changes
+between the lost position and the new slot are gone from the stream.</code></pre>
+
+  <h3>Measured: what UPDATE and DELETE carry</h3>
+  <p>Under DEFAULT, the UPDATE carries the new row and the DELETE carries only the primary key. After <code>ALTER TABLE ... REPLICA IDENTITY FULL</code>, the UPDATE carries the whole old row as <code>old-key</code> alongside the new tuple, and the DELETE carries every column. The <code>ALTER</code> itself does not appear in the stream.</p>
+  <pre><code>== WAL CDC identity: what UPDATE and DELETE carry ==
+&gt;&gt; DEFAULT identity (primary key only)
+774 | table public.orders: UPDATE: id[bigint]:1 order_ref[text]:'ord-a' status[text]:'paid' total_cents[integer]:100 notes[text]:'' created_at[timestamp with time zone]:'2026-10-31 06:32:36.803374+00'
+775 | table public.orders: DELETE: id[bigint]:2
+&gt;&gt; ALTER TABLE orders REPLICA IDENTITY FULL (DDL: not in the decoded stream)
+777 | table public.orders: UPDATE: old-key: id[bigint]:3 order_ref[text]:'ord-c' status[text]:'created' total_cents[integer]:300 notes[text]:'' created_at[timestamp with time zone]:'2026-10-31 06:32:36.803374+00' new-tuple: id[bigint]:3 order_ref[text]:'ord-c' status[text]:'paid' total_cents[integer]:300 notes[text]:'' created_at[timestamp with time zone]:'2026-10-31 06:32:36.803374+00'
+778 | table public.orders: DELETE: id[bigint]:4 order_ref[text]:'ord-d' status[text]:'created' total_cents[integer]:400 notes[text]:'' created_at[timestamp with time zone]:'2026-10-31 06:32:36.803374+00'</code></pre>
+
+  <h2>Production Notes</h2>
+  <ul>
+    <li>Alert on slot lag and on the size of <code>pg_wal</code>, not only on connector health. A connected connector can still fall behind, and a disconnected one (<code>active = false</code> for a slot that should be in use) is easy to miss because application writes continue until disk pressure appears.</li>
+    <li>Use <code>max_slot_wal_keep_size</code> deliberately. It bounds disk at the price of invalidating the slot; decide in advance that a resnapshot is acceptable.</li>
+    <li>Idle slots hold <code>catalog_xmin</code>, which blocks vacuum from cleaning system catalogs. A forgotten slot also causes catalog bloat.</li>
+    <li>On a database where captured tables are quiet while other tables are busy, a slot can stall behind WAL it never reads, so WAL grows with a healthy connector. Debezium's heartbeat (<code>heartbeat.interval.ms</code>, optionally <code>heartbeat.action.query</code>) keeps the slot moving.</li>
+    <li>Before PostgreSQL 17, logical slots are not carried over on failover, so a promoted standby loses them. PostgreSQL 17 adds opt-in failover slots (<code>failover = true</code> on the slot with <code>sync_replication_slots</code> on the standby).</li>
+    <li>Keep outbox events small and explicit. CDC moves committed bytes; it does not make a bad event contract easier to consume.</li>
+    <li>Backfills and bulk updates are CDC events too. Plan whether downstream consumers should see each historical row change or a separate controlled rebuild.</li>
+    <li>Dropping a slot is a data-loss decision for that consumer. Do it only when you know the connector can resnapshot or the missing interval is acceptable.</li>
+  </ul>
+
+  <h2>Code Pointers</h2>
+  <table>
+    <thead><tr><th>Code</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/audaykumar/keystone/tree/main/labs/postgres/wal-cdc"><code>labs/postgres/wal-cdc</code></a></td><td>Complete runnable lab.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/wal-cdc/compose.yaml"><code>compose.yaml</code></a></td><td>PostgreSQL configuration for <code>wal_level=logical</code>, slots, and the small WAL budget.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/wal-cdc/Makefile"><code>Makefile</code></a></td><td>Targets, baseline reset, and slot management.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/wal-cdc/scripts/test.sh"><code>scripts/test.sh</code></a></td><td>The open-transaction probe and the assertions that uncommitted rows stay hidden.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/wal-cdc/scripts/break.sh"><code>scripts/break.sh</code></a></td><td>The stalled-consumer run, the <code>restart_lsn</code> advance loop, and the checkpoint evidence.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/wal-cdc/scripts/cap.sh"><code>scripts/cap.sh</code></a></td><td>Runtime <code>max_slot_wal_keep_size</code> and slot invalidation.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/wal-cdc/scripts/identity.sh"><code>scripts/identity.sh</code></a></td><td>Replica identity DEFAULT versus FULL.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/wal-cdc/scripts/wal.sql"><code>scripts/wal.sql</code></a></td><td>Compares <code>pg_wal</code> segments with the slot and insert position.</td></tr>
+      <tr><td><a href="https://github.com/audaykumar/keystone/blob/main/labs/postgres/wal-cdc/README.md"><code>README.md</code></a></td><td>Predictions, complete measured output, and notes.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Further Reading &amp; Watching</h2>
+  <ul class="source-list">
+    <li><a href="https://www.postgresql.org/docs/current/wal-intro.html">PostgreSQL docs: Write-Ahead Logging</a>, the durability mechanism that makes crash recovery and replication possible.</li>
+    <li><a href="https://www.postgresql.org/docs/current/logicaldecoding.html">PostgreSQL docs: Logical Decoding</a>, the official overview of decoding WAL changes.</li>
+    <li><a href="https://www.postgresql.org/docs/current/logicaldecoding-explanation.html">PostgreSQL docs: Logical Decoding Concepts</a>, snapshots, output plugins, and slots.</li>
+    <li><a href="https://www.postgresql.org/docs/current/warm-standby.html#STREAMING-REPLICATION-SLOTS">PostgreSQL docs: Replication Slots</a>, slot retention and restart behavior.</li>
+    <li><a href="https://www.postgresql.org/docs/current/view-pg-replication-slots.html">PostgreSQL docs: pg_replication_slots</a>, the <code>wal_status</code> and <code>safe_wal_size</code> columns.</li>
+    <li><a href="https://debezium.io/documentation/reference/stable/connectors/postgresql.html">Debezium docs: PostgreSQL connector</a>, how Debezium uses logical decoding in production.</li>
+    <li><a href="https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html">Debezium docs: Outbox Event Router</a>, the connector-side pattern used with transactional outbox rows.</li>
+    <li>Book: Martin Kleppmann, <em>Designing Data-Intensive Applications</em>, ch. 5 on replication and logs.</li>
+  </ul>
+</main>
+
+</body>
+</html>

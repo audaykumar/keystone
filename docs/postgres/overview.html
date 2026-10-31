@@ -488,7 +488,7 @@ sequenceDiagram
 
       <p>After a crash, PostgreSQL replays WAL to restore changes that were committed but not yet present in the table files. WAL is also the source stream for physical replication and logical decoding.</p>
 
-      <p>Each WAL position has an LSN, or Log Sequence Number. CDC systems should use source log positions to preserve order and resume safely. Wall-clock timestamps are not a reliable substitute for log order.</p>
+      <p>Each WAL position has an LSN, or Log Sequence Number. CDC systems should use source log positions to preserve order and resume safely. Wall-clock timestamps are not a reliable substitute for log order. For how logical decoding, replication slots, and retained WAL work, see <a href="wal-cdc.html">PostgreSQL WAL for CDC</a>.</p>
 
       <p>For WAL record structure, checkpoints, recovery, and replication, read the <a href="https://www.postgresql.org/docs/current/wal-intro.html">official WAL introduction</a>.</p>
     </section>

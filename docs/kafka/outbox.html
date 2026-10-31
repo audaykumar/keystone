@@ -42,7 +42,7 @@
   <p>The outbox changes the problem from two systems to one local transaction. The service writes the business change and an event record to the same database. If the transaction commits, both records exist. If it rolls back, neither exists. Publishing is moved out of the request path and can be retried independently.</p>
 
   <h3>Polling and CDC</h3>
-  <p>A polling publisher queries unpublished outbox rows, publishes them, and marks them sent. It is simple and portable, but it adds database load and usually has higher latency. A CDC publisher reads the database change log, such as PostgreSQL WAL through logical decoding, and publishes committed outbox inserts. CDC usually gives lower latency and less query load, but it adds connector operations, replication slot monitoring, and schema-management concerns.</p>
+  <p>A polling publisher queries unpublished outbox rows, publishes them, and marks them sent. It is simple and portable, but it adds database load and usually has higher latency. A CDC publisher reads the database change log, such as PostgreSQL WAL through logical decoding, and publishes committed outbox inserts. CDC usually gives lower latency and less query load, but it adds connector operations, replication slot monitoring, and schema-management concerns. The PostgreSQL side of that, including what a stalled slot does to disk, is in <a href="../postgres/wal-cdc.html">PostgreSQL WAL for CDC</a>.</p>
 
   <h2>Concept Deep Dive</h2>
   <h3>Pattern family</h3>

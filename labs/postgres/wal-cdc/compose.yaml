@@ -1,0 +1,43 @@
+name: pg-wal-cdc
+
+services:
+  postgres:
+    image: postgres:17.2-alpine
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=8
+      - -c
+      - max_wal_senders=8
+      # Small WAL budget so slot-pinned WAL is visible on disk at lab scale.
+      - -c
+      - min_wal_size=32MB
+      - -c
+      - max_wal_size=64MB
+      - -c
+      - wal_keep_size=0
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lab}
+      POSTGRES_DB: ${POSTGRES_DB:-shop}
+      # Defaults for `docker compose exec ... psql`, so the Makefile and scripts
+      # need no -U/-d and cannot drift from the values compose resolved.
+      PGUSER: ${POSTGRES_USER:-lab}
+      PGDATABASE: ${POSTGRES_DB:-shop}
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # -h forces TCP: the image's temporary init-time server listens only on
+      # the unix socket, so a socket check can pass before the real server is up.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-lab} -d ${POSTGRES_DB:-shop}"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+
+volumes:
+  pgdata:

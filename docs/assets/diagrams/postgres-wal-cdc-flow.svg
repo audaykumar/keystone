@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 380" role="img" aria-labelledby="title desc">
+  <title id="title">PostgreSQL WAL to CDC flow</title>
+  <desc id="desc">A service writes a state row and an outbox row in one transaction to PostgreSQL, PostgreSQL flushes WAL, a logical decoder reads it, and a CDC connector publishes changes at commit. A replication slot tracks the consumer position. When the consumer stops, WAL is retained behind the slot.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8.5" refY="5" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#79c0ff"/>
+    </marker>
+    <style>
+      .bg { fill: #0d1117; }
+      .box { fill: #161b22; stroke: #30363d; stroke-width: 2; rx: 10; }
+      .hot { fill: #231a13; stroke: #f2cc60; }
+      .warn { fill: #25171c; stroke: #ff7b72; }
+      .ok { fill: #132017; stroke: #56d364; }
+      .label { fill: #f0f6fc; font: 700 17px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .small { fill: #8b949e; font: 13px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .edge { stroke: #79c0ff; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .edge-warn { stroke: #ff7b72; stroke-width: 3; fill: none; marker-end: url(#arrow); stroke-dasharray: 8 7; }
+      .mono { fill: #c9d1d9; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    </style>
+  </defs>
+  <rect class="bg" width="980" height="380"/>
+  <rect class="box" x="36" y="96" width="150" height="90"/>
+  <text class="label" x="64" y="132">Service</text>
+  <text class="small" x="64" y="156">state row +</text>
+  <text class="small" x="64" y="174">outbox row</text>
+
+  <rect class="box" x="250" y="74" width="170" height="134"/>
+  <text class="label" x="286" y="110">Postgres</text>
+  <text class="small" x="286" y="134">heap pages</text>
+  <text class="small" x="286" y="154">indexes</text>
+  <text class="small" x="286" y="174">transaction commit</text>
+
+  <rect class="box hot" x="486" y="72" width="176" height="136"/>
+  <text class="label" x="532" y="108">WAL</text>
+  <text class="small" x="520" y="132">ordered records</text>
+  <text class="small" x="520" y="152">changes, commits</text>
+  <text class="small" x="520" y="172">LSN positions</text>
+
+  <rect class="box ok" x="728" y="70" width="176" height="138"/>
+  <text class="label" x="758" y="108">CDC Connector</text>
+  <text class="small" x="762" y="132">decoded at commit</text>
+  <text class="small" x="762" y="152">logical changes</text>
+  <text class="small" x="762" y="172">publishes events</text>
+
+  <path class="edge" d="M186 140 H250"/>
+  <path class="edge" d="M420 140 H486"/>
+  <path class="edge" d="M662 140 H728"/>
+
+  <!-- connector confirms its position back to the slot -->
+  <path class="edge" d="M745 208 V238 H450 V262"/>
+  <text class="small" x="500" y="232">confirms position</text>
+
+  <rect class="box" x="250" y="262" width="400" height="96"/>
+  <text class="label" x="270" y="290">Replication slot</text>
+  <text class="mono" x="270" y="314">restart_lsn: WAL kept from here</text>
+  <text class="mono" x="270" y="336">confirmed_flush_lsn: consumer cursor</text>
+
+  <rect class="box warn" x="700" y="262" width="240" height="96"/>
+  <text class="label" x="720" y="290">Consumer stopped</text>
+  <text class="small" x="720" y="314">lag = current - confirmed</text>
+  <text class="small" x="720" y="336">pinned = current - restart</text>
+  <path class="edge-warn" d="M700 310 H650"/>
+</svg>
