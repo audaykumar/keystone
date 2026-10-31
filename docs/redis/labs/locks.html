@@ -78,7 +78,7 @@ end</code></pre>
   <h2>Important Limit</h2>
   <div class="callout">
     <strong>What this fix does not solve</strong>
-    The lab makes work duration longer than the lock TTL. That means concurrent critical-section occupancy can still happen. Lua compare-and-delete only prevents deleting another worker's lock. Correct writes often also need lock extension, idempotency, or fencing tokens.
+    The lab makes work duration longer than the lock TTL. That means concurrent critical-section occupancy can still happen. Lua compare-and-delete only prevents deleting another worker's lock. Renew only with an atomic ownership-token check. Renewal cannot run during an arbitrary pause; resource-side fencing or equivalent conditional writes reject stale owners. Idempotency is not a general stale-write check.
   </div>
 
   <h2>Code Pointers</h2>

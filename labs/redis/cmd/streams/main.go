@@ -64,7 +64,7 @@ func produce(ctx context.Context, rdb *redis.Client, count int) []string {
 			Values: map[string]any{
 				"order_id": fmt.Sprintf("ORD-%04d", i),
 				"item":     fmt.Sprintf("item-%d", i%5+1),
-				"qty":      i % 10 + 1,
+				"qty":      i%10 + 1,
 			},
 		}).Result()
 		if err != nil {
@@ -145,7 +145,7 @@ func runBreak(ctx context.Context, rdb *redis.Client, messageCount int) {
 
 	if pending.Count > 0 {
 		fmt.Printf("\n  "+red+bold+"✗ FAILED"+reset+"  %d messages stuck in PEL after consumer crash\n", pending.Count)
-		fmt.Printf("  these messages will never be redelivered unless reclaimed with XAUTOCLAIM\n\n")
+		fmt.Printf("  the new-message path skips pending work; use XAUTOCLAIM, XCLAIM or pending-history reads\n\n")
 		os.Exit(1)
 	}
 }
@@ -254,9 +254,9 @@ func runFix(ctx context.Context, rdb *redis.Client, messageCount int) {
 }
 
 func main() {
-	mode     := flag.String("mode", "break", "break | fix")
+	mode := flag.String("mode", "break", "break | fix")
 	messages := flag.Int("messages", 20, "number of messages to produce")
-	check    := flag.Bool("check", false, "exit 1 if invariant violated")
+	check := flag.Bool("check", false, "exit 1 if invariant violated")
 	flag.Parse()
 
 	// streams always exits non-zero on violation; -check is accepted for CLI consistency

@@ -5,7 +5,7 @@ Five isolated scenarios. Each exposes one Redis mechanism through a Go driver, a
 | Scenario | Mechanism | Break |
 |---|---|---|
 | `cache/` | GET/SET/TTL, key expiry | Thundering herd: N workers all miss simultaneously |
-| `ratelimit/` | INCR, EXPIRE, sorted sets, Lua | Fixed-window burst at boundary; non-atomic race |
+| `ratelimit/` | INCR, EXPIRE, sorted sets, Lua | Fixed-window burst at boundary despite atomic Lua |
 | `locks/` | SET NX, Lua compare-and-delete | Lock expires mid-work; stale holder deletes successor's lock |
 | `streams/` | XADD, XREADGROUP, XACK, XAUTOCLAIM | Consumer crashes before ack; PEL grows; duplicates on recovery |
 | `pubsub/` | PUBLISH, SUBSCRIBE | Offline subscriber misses messages permanently |

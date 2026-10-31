@@ -44,8 +44,8 @@ func logf(color, format string, args ...any) {
 // misses them permanently — there is no way to replay them.
 func runPubSub(ctx context.Context, rdb *redis.Client, messages int) {
 	var (
-		receivedA atomic.Int64
-		receivedB atomic.Int64
+		receivedA  atomic.Int64
+		receivedB  atomic.Int64
 		subBOnline atomic.Bool
 	)
 	subBOnline.Store(true)
@@ -149,54 +149,47 @@ func runStreams(ctx context.Context, rdb *redis.Client, messages int) {
 	rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0")
 
 	third := messages / 3
-	logf(cyan, "  stream=%-12s  group=%s  created", streamName, groupName)
-
-	fmt.Println()
-	logf(bold, "┄┄┄ producer: adding %d messages to stream ┄┄┄", messages)
-	fmt.Println()
-
-	// Produce all messages up front (simulates messages arriving while consumer is offline).
-	for i := 1; i <= messages; i++ {
-		rdb.XAdd(ctx, &redis.XAddArgs{
-			Stream: streamName,
-			Values: map[string]any{"order": fmt.Sprintf("ORD-%04d", i)},
-		})
-		logf(dim, "  XADD   order=ORD-%04d", i)
-		time.Sleep(20 * time.Millisecond)
-	}
-
-	// Consumer A: processes first and last thirds.
-	fmt.Println()
-	logf(bold, "┄┄┄ consumer-A: reads all — streams buffer messages while offline ┄┄┄")
-	fmt.Println()
-
+	consumer := redis.NewClient(rdb.Options())
+	defer func() { consumer.Close() }()
 	processedA := 0
-	for processedA < messages {
-		streams, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
-			Group:    groupName,
-			Consumer: "consumer-a",
-			Streams:  []string{streamName, ">"},
-			Count:    10,
-			Block:    500 * time.Millisecond,
-		}).Result()
-		if err == redis.Nil || (err != nil && err.Error() == "redis: nil") {
-			break
-		}
-		if err != nil {
-			break
-		}
-		for _, s := range streams {
-			for _, msg := range s.Messages {
-				rdb.XAck(ctx, streamName, groupName, msg.ID)
-				processedA++
-				if processedA == third {
-					logf(yellow, "  OFFLINE  consumer-A went offline at message %d", processedA)
-				}
-				if processedA == third*2 {
-					logf(yellow, "  ONLINE   consumer-A reconnected at message %d — catching up", processedA)
-				}
-				logf(green, "  XACK   id=%-22s  order=%s", msg.ID, msg.Values["order"])
+	consume := func(want int) {
+		for processedA < want {
+			batches, err := consumer.XReadGroup(ctx, &redis.XReadGroupArgs{Group: groupName, Consumer: "consumer-a", Streams: []string{streamName, ">"}, Count: int64(want - processedA), Block: time.Second}).Result()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
 			}
+			for _, batch := range batches {
+				for _, msg := range batch.Messages {
+					if err := consumer.XAck(ctx, streamName, groupName, msg.ID).Err(); err != nil {
+						panic(err)
+					}
+					processedA++
+				}
+			}
+		}
+	}
+	for i := 1; i <= messages; i++ {
+		if err := rdb.XAdd(ctx, &redis.XAddArgs{Stream: streamName, Values: map[string]any{"order": fmt.Sprintf("ORD-%04d", i)}}).Err(); err != nil {
+			panic(err)
+		}
+		if i <= third {
+			consume(i)
+		}
+		if i == third {
+			consumer.Close()
+			logf(yellow, "OFFLINE consumer connection closed; processed=%d", processedA)
+		}
+		if i == third*2 {
+			consumer = redis.NewClient(rdb.Options())
+			if err := consumer.Ping(ctx).Err(); err != nil {
+				panic(err)
+			}
+			logf(yellow, "ONLINE new consumer connection; catching up %d stored messages", i-processedA)
+			consume(i)
+		}
+		if i > third*2 {
+			consume(i)
 		}
 	}
 
@@ -206,7 +199,7 @@ func runStreams(ctx context.Context, rdb *redis.Client, messages int) {
 	fmt.Println(bold + "═══════════════════════ RESULTS ════════════════════════" + reset)
 	fmt.Printf("  messages produced  : %d\n", messages)
 	fmt.Printf("  consumer-A processed: %d  (including %d 'missed' while offline)\n",
-		processedA, messages-third*2+third)
+		processedA, third)
 	fmt.Printf("  remaining in PEL   : %d\n", pending.Count)
 
 	fmt.Println()
@@ -225,9 +218,9 @@ func runStreams(ctx context.Context, rdb *redis.Client, messages int) {
 }
 
 func main() {
-	mode     := flag.String("mode", "pubsub", "pubsub | streams")
+	mode := flag.String("mode", "pubsub", "pubsub | streams")
 	messages := flag.Int("messages", 30, "number of messages to publish")
-	check    := flag.Bool("check", false, "exit 1 if invariant violated")
+	check := flag.Bool("check", false, "exit 1 if invariant violated")
 	flag.Parse()
 
 	// pubsub always exits non-zero on violation; -check is accepted for CLI consistency

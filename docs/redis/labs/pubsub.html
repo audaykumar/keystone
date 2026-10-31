@@ -33,7 +33,7 @@
       <div class="flow-row">
         <button class="flow-node" type="button" data-kind="Producer" data-title="XADD stores messages" data-body="Streams store messages in events-stream even while a consumer is offline."><strong>producer</strong><span>XADD stream</span></button>
         <div class="flow-arrow">stored</div>
-        <button class="flow-node redis good" type="button" data-kind="Stream" data-title="Stream keeps history" data-body="The consumer group can read entries that were added while the consumer was offline."><strong>events-stream</strong><span>durable backlog</span></button>
+        <button class="flow-node redis good" type="button" data-kind="Stream" data-title="Stream keeps history" data-body="The consumer group can read entries that were added while the consumer was offline."><strong>events-stream</strong><span>retained backlog</span></button>
         <div class="flow-arrow">catch up</div>
         <button class="flow-node good" type="button" data-kind="Consumer" data-title="Consumer reconnects" data-body="The stream consumer reads and acknowledges messages after reconnecting, so the same offline period is recoverable."><strong>consumer-A</strong><span>XREADGROUP</span></button>
       </div>
@@ -71,6 +71,26 @@
     <div class="run-card"><h3><code>make test</code></h3><p>Streams mode. Look for the consumer catching up after reconnect.</p></div>
     <div class="run-card"><h3><code>make load</code></h3><p>Runs the streams comparison with more messages.</p></div>
   </div>
+
+  <h2>Lab Evidence: real reconnect (2026-10-31)</h2>
+  <p>Real output of <code>make test</code> (the streams mode). ANSI colour codes, build output, and blank lines are removed; values are unedited.</p>
+  <pre><code>docker compose run --rm driver -mode=streams -messages=30 -check
+═══════════════════════════════════════════════════════════
+  REDIS PUB/SUB LAB — FIRE-AND-FORGET vs STREAMS
+  mode=streams     messages=30  channel=events
+═══════════════════════════════════════════════════════════
+[     0ms] OFFLINE consumer connection closed; processed=10
+[     0ms] ONLINE new consumer connection; catching up 10 stored messages
+═══════════════════════ RESULTS ════════════════════════
+  messages produced  : 30
+  consumer-A processed: 30  (including 10 'missed' while offline)
+  remaining in PEL   : 0
+══════════════════ INVARIANT CHECK ═════════════════════
+  processed=30  expected=30
+  ✓ PASSED  all 30 messages processed after 'reconnect'
+  streams buffer messages — offline consumers catch up on reconnect
+  contrast: Pub/Sub (make break) loses those same messages permanently</code></pre>
+  <p>The consumer client is closed, ten entries are produced while it is absent, and a new connection catches up. This tests consumer continuity, not Redis server-crash durability.</p>
 
   <h2>Production Notes</h2>
   <ul>

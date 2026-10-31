@@ -2,7 +2,7 @@
 
 ## What this exposes
 
-Redis Streams deliver messages to consumer groups with at-least-once semantics. A message is removed from the Pending Entry List (PEL) only when the consumer calls XACK. If a consumer crashes before acknowledging, messages stay in the PEL indefinitely. XAUTOCLAIM reclaims them for a recovery consumer.
+Redis Streams deliver messages to consumer groups with at-least-once semantics. XACK normally removes successfully processed entries from the PEL. In Redis 7+, XAUTOCLAIM also clears pending references whose payloads were deleted or trimmed. XCLAIM or reading a consumer's own pending history are other recovery paths. Retention, persistence, recovery and ack ordering determine message safety.
 
 ## Redis commands used
 
@@ -34,7 +34,7 @@ make down
 
 ## Invariant
 
-Every produced message must be acknowledged exactly once. Break mode leaves messages in PEL permanently. Fix mode recovers all of them.
+For this finite retained dataset, recovery must acknowledge all produced entries and leave the PEL empty. This is not an exactly-once business-effect guarantee. Break leaves pending work until recovery or cleanup; fix reclaims it.
 
 ## What to try in redis-cli
 

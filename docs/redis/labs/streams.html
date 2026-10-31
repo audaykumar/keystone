@@ -77,7 +77,7 @@
 
   <h2>Production Notes</h2>
   <ul>
-    <li>Stream processing is at-least-once. A message can be processed more than once after crashes or retries.</li>
+    <li>Consumer groups support at-least-once recovery with ack-after-effect, pending recovery, and retained payloads. Persistence and failover settings determine whether entries and group state survive server failure. Duplicate processing remains possible.</li>
     <li>Handlers should be idempotent, usually with a durable processed-message marker or business idempotency key.</li>
     <li><code>XAUTOCLAIM</code> needs a sane idle threshold. Too low can steal work from slow but healthy consumers.</li>
     <li>Streams keep data until trimmed. Plan retention with <code>XTRIM</code> or maxlen policies.</li>

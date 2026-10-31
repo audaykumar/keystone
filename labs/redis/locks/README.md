@@ -39,7 +39,7 @@ Worker A deleted Worker B's lock. Worker C enters before Worker B finishes.
 ## What Lua CAD prevents vs what it does not
 
 - **Prevents:** wrong-owner DEL --- a holder whose lock expired cannot silently wipe the successor's lock
-- **Does not prevent:** concurrent occupancy when work outlasts the TTL --- for that, use lock extension (re-SET with new TTL before expiry) or fencing tokens
+- **Does not prevent:** concurrent occupancy when work outlasts the TTL --- token-checked Lua renewal can extend a still-valid lease, but cannot run during an arbitrary pause. Resource-side fencing or equivalent conditional writes reject stale effects after lease loss
 
 ## Run
 
