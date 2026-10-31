@@ -201,4 +201,4 @@ work.queue messages=0
 work.dlq   messages=1
 ```
 
-Both settings completed all 29 good messages, dead-lettered the poison, and left `work.queue` empty with one message in `work.dlq`. The elapsed times differ by about 10ms, and an earlier run of the same target had them the other way round (208ms at prefetch 1, 186ms at prefetch 5), so the gap is run-to-run noise, not an effect of prefetch. These are single short runs, not a throughput benchmark. The historical native-requeue `make break` run (2026-07-08) processed only 4/29 good messages before its 20-attempt cap.
+Both settings completed all 29 good messages, dead-lettered the poison, and left `work.queue` empty with one message in `work.dlq`. The elapsed times differ by about 10ms, which a single short run cannot attribute to prefetch. These are single short runs, not a throughput benchmark. The historical native-requeue `make break` run (2026-07-08) processed only 4/29 good messages before its 20-attempt cap.

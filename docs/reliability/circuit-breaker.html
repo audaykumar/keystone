@@ -32,7 +32,7 @@
   <p>A breaker has three states. <strong>Closed</strong> is normal: calls pass through and the breaker is watching for failures. Enough consecutive failures <strong>trip</strong> it <strong>open</strong>: every call fails immediately, without even attempting the dependency. After a cool-off, this simple policy allows one <strong>half-open</strong> probe through to test whether the dependency has recovered; success closes it again, failure reopens it and restarts the clock.</p>
 
   <figure class="terminal-shot">
-    <img src="../assets/diagrams/circuit-breaker-states.svg" alt="A state machine with three states: closed, where calls pass through and failures accumulate a streak; open, where every call fails fast after the streak trips the breaker; and half-open, where a bounded number of probes (one, in this lab's simple policy) is allowed through after a cooldown, closing the breaker on success or reopening it on failure." />
+    <img src="../assets/diagrams/circuit-breaker-states.svg" alt="A state machine with three states: closed, where calls pass through and failures accumulate a streak; open, where every call fails fast after the streak trips the breaker; and half-open, where a bounded number of probes (one, in the simplest policy) is allowed through after a cooldown, closing the breaker on success or reopening it on failure." />
   </figure>
 
   <h2>Ground-Up Explanation</h2>

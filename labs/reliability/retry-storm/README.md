@@ -127,7 +127,7 @@ Any one of these helps; together they convert collapse into degraded-but-serving
 
 ## Naive storm recheck (2026-10-31)
 
-`make break`: naive policy, 60 req/s for 20s, backend degraded. Blank lines and build output are removed; values are unedited.
+`make break`: naive policy, 60 req/s for 20s, backend degraded. Make banner text, build output, and blank lines are removed; values are unedited.
 
 ```text
 [naive (storm)] backend degraded; offering 60 req/s for 20s
@@ -144,7 +144,7 @@ Blind retries at both hops drove 1200 requests to 9725 backend calls (8.10x) and
 
 ## Trigger-removal recheck (2026-10-31)
 
-`make recovery`: naive policy, 60 req/s for 24s, degradation removed at 12s. Blank lines and build output are removed; values are unedited.
+`make recovery`: naive policy, 60 req/s for 24s, degradation removed at 12s. Make banner text, build output, and blank lines are removed; values are unedited.
 
 ```text
 [trigger removal (naive policy)] backend degraded; offering 60 req/s for 24s
@@ -164,7 +164,7 @@ Requests started before removal succeeded 136 of 720 times (18.9%). After the tr
 
 ## Corrected fixed-policy recheck (2026-10-31)
 
-`make test`: corrected fixed policy, 60 req/s for 20s, backend continuously degraded. Blank lines and build output are removed; values are unedited.
+`make test`: corrected fixed policy, 60 req/s for 20s, backend continuously degraded. Make banner text, build output, and blank lines are removed; values are unedited.
 
 ```text
 [fixed (budgeted)] backend degraded; offering 60 req/s for 20s

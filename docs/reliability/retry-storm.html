@@ -100,7 +100,7 @@ fixed (budgeted):
   <p>The historical fixed-policy numbers come from code in which the API parsed but did not enforce the inherited deadline, so they predate the correction. The naive baseline is unchanged and is re-measured below.</p>
 
   <h3>Recheck: the naive storm (2026-10-31)</h3>
-  <p>Naive policy, 60 req/s for 20s, backend degraded. Blank lines and build output are removed; values are unedited.</p>
+  <p>Naive policy, 60 req/s for 20s, backend degraded. Make banner text, build output, and blank lines are removed; values are unedited.</p>
   <pre><code>[naive (storm)] backend degraded; offering 60 req/s for 20s
 === naive (storm) ===
 client requests:   1200
@@ -112,7 +112,7 @@ client latency:    p50=1.883s p99=1.89s</code></pre>
   <p>Blind retries at both hops drove 1200 requests to 9725 backend calls (8.10x) and 11.8% success, with every latency pinned near the 1.9s attempt ceiling. The historical run (2026-07-08) measured 22.8% success at 7.30x; the storm's exact numbers vary run to run.</p>
 
   <h3>Recheck: remove the trigger while traffic continues (2026-10-31)</h3>
-  <p>Naive policy, 60 req/s for 24s, degradation removed at 12s. Blank lines and build output are removed; values are unedited.</p>
+  <p>Naive policy, 60 req/s for 24s, degradation removed at 12s. Make banner text, build output, and blank lines are removed; values are unedited.</p>
   <pre><code>[trigger removal (naive policy)] backend degraded; offering 60 req/s for 24s
 trigger removed at 12s; offered traffic continues
 === trigger removal (naive policy) ===
@@ -127,7 +127,7 @@ client latency:    p50=1.883s p99=1.89s</code></pre>
   <p>Requests started before removal succeeded 136 of 720 times (18.9%). After the trigger was removed, none of the 720 requests started succeeded (0 of 720) and latency stayed pinned near 1.9s: the amplified retry load (8.28x) kept the backend overloaded even though its degradation was gone. This is one run with the lab's fixed rates and capacities, so it shows the loop can sustain itself, not how often it does. An earlier recovery run, made while the naive policy was still cancelling orphaned downstream calls, recovered; that baseline was corrected and is now covered by a test.</p>
 
   <h3>Recheck: corrected fixed policy, continuously degraded backend (2026-10-31)</h3>
-  <p>Corrected fixed policy, 60 req/s for 20s. Blank lines and build output are removed; values are unedited.</p>
+  <p>Corrected fixed policy, 60 req/s for 20s. Make banner text, build output, and blank lines are removed; values are unedited.</p>
   <pre><code>[fixed (budgeted)] backend degraded; offering 60 req/s for 20s
 === fixed (budgeted) ===
 client requests:   1200

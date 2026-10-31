@@ -53,7 +53,7 @@ PUBLISH events "hello"       # send from cli while driver runs
 
 ## Reconnect recheck (2026-10-31)
 
-Real output of `make test` (the streams mode). ANSI colour codes, build output, and blank lines are removed; values are unedited.
+Real output of `make test` (the streams mode). Make banner text, ANSI colour codes, build output, and blank lines are removed; values are unedited.
 
 ```text
 docker compose run --rm driver -mode=streams -messages=30 -check
